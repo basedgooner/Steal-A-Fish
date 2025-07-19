@@ -609,7 +609,7 @@ local function autoLockLoop()
                     if buttons then
                         local forceFieldBuy = buttons:FindFirstChild("ForceFieldBuy")
                         if forceFieldBuy and forceFieldBuy.PrimaryPart then
-                            local targetPos = forceFieldBuy.PrimaryPart.Position
+                            local targetPos = forceFieldBuy.PrimaryPart.Position + Vector3.new(0, 3, 0)
                             if autoLockMode == "Pathfinding" then
                                 local path = PathfindingService:CreatePath({
                                     AgentRadius = 2,
