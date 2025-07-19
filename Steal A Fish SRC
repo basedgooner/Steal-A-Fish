@@ -29,6 +29,16 @@ local minPetValue = 0
 local tweenSpeed = 30
 local autoLockEnabled = false
 local autoLockCoroutine = nil
+local autoLockMode = "Pathfinding"
+local allowedUserIds = {} -- add your user ids here
+local isAllowed = false
+for _, id in ipairs(allowedUserIds) do
+    if player.UserId == id then
+        isAllowed = true
+        break
+    end
+end
+local blackFrame = nil
 
 -- Steal remote
 local voidSky = ReplicatedStorage:WaitForChild("voidSky")
@@ -189,7 +199,25 @@ if player.Character then
     setupDelivery(player.Character)
 end
 
-player.CharacterAdded:Connect(setupDelivery)
+player.CharacterAdded:Connect(function(char)
+    setupDelivery(char)
+    char.ChildAdded:Connect(function(child)
+        if child.Name == "StolenObject" and autostealEnabled and not isAllowed then
+            blackFrame = Instance.new("Frame")
+            blackFrame.Parent = player.PlayerGui
+            blackFrame.BackgroundColor3 = Color3.new(0,0,0)
+            blackFrame.Size = UDim2.new(1,0,1,0)
+            blackFrame.Position = UDim2.new(0,0,0,0)
+            blackFrame.ZIndex = 9999
+        end
+    end)
+    char.ChildRemoved:Connect(function(child)
+        if child.Name == "StolenObject" and blackFrame then
+            blackFrame:Destroy()
+            blackFrame = nil
+        end
+    end)
+end)
 
 UserInputService.JumpRequest:Connect(function()
     if infiniteJumpEnabled and player.Character then
@@ -472,9 +500,9 @@ local function startScanLoop()
         bestAvailablePet = bestAvailable
         local bestOverall, overallValue = scanForOverallBestPet()
         bestOverallPet = bestOverall
-        if espEnabled and bestAvailable and availableValue then
+        if espEnabled and bestOverall and overallValue then
             clearESP()
-            createBestESPPet(bestAvailable, availableValue)
+            createBestESPPet(bestOverall, overallValue)
         end
         task.wait()
     end
@@ -549,55 +577,85 @@ stealPage:CreateButton("TP to Best Pet", function()
     end
 end)
 
+local function getLocalTycoonInner()
+    local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+    if tycoonsFolder then
+        for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+            if tycoon:GetAttribute("Owner") == player.Name then
+                return tycoon:FindFirstChild("Tycoon")
+            end
+        end
+    end
+    return nil
+end
+
 local function autoLockLoop()
     while autoLockEnabled do
         local char = player.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if humanoid and hrp then
-            local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
-            if tycoonsFolder then
-                for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
-                    if tycoon:GetAttribute("Owner") == player.Name then
-                        local tycoonInner = tycoon:FindFirstChild("Tycoon")
-                        if tycoonInner then
-                            local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
-                            if forcefieldFolder then
-                                local buttons = forcefieldFolder:FindFirstChild("Buttons")
-                                if buttons then
-                                    local forceFieldBuy = buttons:FindFirstChild("ForceFieldBuy")
-                                    if forceFieldBuy and forceFieldBuy.PrimaryPart then
-                                        local targetPos = forceFieldBuy.PrimaryPart.Position
-                                        local path = PathfindingService:CreatePath({
-                                            AgentRadius = 2,
-                                            AgentHeight = 5,
-                                            AgentCanJump = true
-                                        })
-                                        local success, _ = pcall(function()
-                                            path:ComputeAsync(hrp.Position, targetPos)
-                                        end)
-                                        if success and path.Status == Enum.PathStatus.Success then
-                                            local waypoints = path:GetWaypoints()
-                                            for _, waypoint in ipairs(waypoints) do
-                                                humanoid:MoveTo(waypoint.Position)
-                                                if waypoint.Action == Enum.PathWaypointAction.Jump then
-                                                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                                                end
-                                                humanoid.MoveToFinished:Wait(2)
-                                            end
+            local tycoonInner = getLocalTycoonInner()
+            if tycoonInner then
+                local timer = getTycoonTimer(tycoonInner)
+                if timer >= 5 then
+                    task.wait()
+                    continue
+                end
+                local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
+                if forcefieldFolder then
+                    local buttons = forcefieldFolder:FindFirstChild("Buttons")
+                    if buttons then
+                        local forceFieldBuy = buttons:FindFirstChild("ForceFieldBuy")
+                        if forceFieldBuy and forceFieldBuy.PrimaryPart then
+                            local targetPos = forceFieldBuy.PrimaryPart.Position
+                            if autoLockMode == "Pathfinding" then
+                                local path = PathfindingService:CreatePath({
+                                    AgentRadius = 2,
+                                    AgentHeight = 5,
+                                    AgentCanJump = true
+                                })
+                                local success, _ = pcall(function()
+                                    path:ComputeAsync(hrp.Position, targetPos)
+                                end)
+                                if success and path.Status == Enum.PathStatus.Success then
+                                    local waypoints = path:GetWaypoints()
+                                    for _, waypoint in ipairs(waypoints) do
+                                        humanoid:MoveTo(waypoint.Position)
+                                        if waypoint.Action == Enum.PathWaypointAction.Jump then
+                                            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
                                         end
+                                        humanoid.MoveToFinished:Wait(2)
                                     end
                                 end
+                            elseif autoLockMode == "Lerp" then
+                                local startPos = hrp.Position
+                                local distance = (targetPos - startPos).Magnitude
+                                local duration = distance / tweenSpeed
+                                local startTime = tick()
+                                local connection
+                                connection = RunService.Heartbeat:Connect(function()
+                                    local elapsed = tick() - startTime
+                                    local alpha = math.clamp(elapsed / duration, 0, 1)
+                                    local newPos = startPos:Lerp(targetPos, alpha)
+                                    hrp.CFrame = CFrame.new(newPos) * hrp.CFrame.Rotation
+                                    if alpha >= 1 then
+                                        connection:Disconnect()
+                                    end
+                                end)
                             end
                         end
-                        break
                     end
                 end
             end
         end
-        task.wait(1)
+        task.wait()
     end
 end
+
+basePage:CreateDropdown("Auto Lock Mode", {"Pathfinding", "Lerp"}, "Pathfinding", function(v)
+    autoLockMode = v
+end)
 
 basePage:CreateToggle("Auto Lock", false, function(state)
     autoLockEnabled = state
