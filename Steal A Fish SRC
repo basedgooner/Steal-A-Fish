@@ -342,7 +342,7 @@ stealPage:CreateSlider("Min Pet Value", 0, 10000000, minPetValue, function(v)
     minPetValue = v
 end)
 
-stealPage:CreateSlider("Tween Speed", 10, 100, tweenSpeed, function(v)
+stealPage:CreateSlider("Tween Speed", 10, 50, tweenSpeed, function(v)
     tweenSpeed = v
 end)
 
