@@ -24,12 +24,12 @@ local espObjects = {}
 local bestAvailablePet = nil
 local bestOverallPet = nil
 local autostealCoroutine = nil
-local timerThreshold = 3
+local timerThreshold = 2
 local minPetValue = 0
 local tweenSpeed = 30
 local autoLockEnabled = false
 local autoLockCoroutine = nil
-local autoLockMode = "Pathfinding"
+local autoLockMode = "Lerp"
 local allowedUserIds = {} -- add your user ids here
 local isAllowed = false
 for _, id in ipairs(allowedUserIds) do
@@ -39,7 +39,7 @@ break
 end
 end
 local blackFrame = nil
-local deliveryMode = "Lerp"
+local deliveryMode = "Direct"
 
 -- Steal remote
 local voidSky = ReplicatedStorage:WaitForChild("voidSky")
@@ -113,156 +113,40 @@ height = 25
 end
 local elevatedTarget = collectPart.Position + Vector3.new(0, height, 0) + offset
 if deliveryMode == "Direct" then
-hrp.CFrame = CFrame.new(elevatedTarget) * hrp.CFrame.Rotation
-task.wait(5)
-if char:FindFirstChild("StolenObject") then
-hrp.CFrame = CFrame.new(collectPart.Position) * hrp.CFrame.Rotation
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-end
-else -- Lerp mode
-hrp.CFrame = hrp.CFrame + Vector3.new(0, height, 0)
-local startPos = hrp.Position
-local distance = (elevatedTarget - startPos).Magnitude
-local duration = distance / tweenSpeed
-local startTime = tick()
-local connection
-connection = RunService.Heartbeat:Connect(function()
-if not char:FindFirstChild("StolenObject") then
-connection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-return
-end
-local elapsed = tick() - startTime
-local alpha = math.clamp(elapsed / duration, 0, 1)
-local newPos = startPos:Lerp(elevatedTarget, alpha)
-hrp.CFrame = CFrame.new(newPos) * hrp.CFrame.Rotation
-local currentPos = hrp.Position
-if (currentPos - collectPart.Position).Magnitude <= 50 then
-connection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-local distToCollect = (currentPos - collectPart.Position).Magnitude
-if distToCollect <= 7 then
-if humanoid then
-humanoid.WalkSpeed = 0
-humanoid.JumpPower = 0
-end
-local fallbackStartPos = hrp.Position
-local fallbackTarget = collectPart.Position
-local fallbackDistance = (fallbackTarget - fallbackStartPos).Magnitude
-local fallbackDuration = fallbackDistance / tweenSpeed
-local fallbackStartTime = tick()
-local fallbackConnection
-fallbackConnection = RunService.Heartbeat:Connect(function()
-if not char:FindFirstChild("StolenObject") then
-fallbackConnection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-return
-end
-local fallbackElapsed = tick() - fallbackStartTime
-local fallbackAlpha = math.clamp(fallbackElapsed / fallbackDuration, 0, 1)
-local fallbackNewPos = fallbackStartPos:Lerp(fallbackTarget, fallbackAlpha)
-hrp.CFrame = CFrame.new(fallbackNewPos) * hrp.CFrame.Rotation
-if fallbackAlpha >= 1 then
-fallbackConnection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-end
+-- First TP 30 studs above collectzone
+hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 30, 0)) * hrp.CFrame.Rotation
+window:Notify("Bypassing anticheat - waiting 5 seconds", "info")
+
+-- Spin during wait
+local spinning = true
+local spinConnection
+spinConnection = RunService.Heartbeat:Connect(function()
+    if spinning and hrp and hrp.Parent then
+        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(15), 0)
+    end
 end)
-else
-local path = PathfindingService:CreatePath({
-AgentRadius = 2,
-AgentHeight = 5,
-AgentCanJump = true
-})
-local success, errorMessage = pcall(function()
-path:ComputeAsync(currentPos, collectPart.Position)
-end)
-if success and path.Status == Enum.PathStatus.Success then
-local waypoints = path:GetWaypoints()
-for _, waypoint in ipairs(waypoints) do
-if not char:FindFirstChild("StolenObject") then
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
+
+task.wait(5.5)
+
+spinning = false
+if spinConnection then spinConnection:Disconnect() end
+
+-- TP directly to collectzone
+hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 3, 0)) * hrp.CFrame.Rotation
+
 end
-return
-end
-humanoid:MoveTo(waypoint.Position)
-if waypoint.Action == Enum.PathWaypointAction.Jump then
-humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-end
-local reached = humanoid.MoveToFinished:Wait(2)
-if not reached then
-break
-end
-end
-else
--- Fallback to direct lerp without extra Y
-if humanoid then
-humanoid.WalkSpeed = 0
-humanoid.JumpPower = 0
-end
-local fallbackStartPos = hrp.Position
-local fallbackTarget = collectPart.Position
-local fallbackDistance = (fallbackTarget - fallbackStartPos).Magnitude
-local fallbackDuration = fallbackDistance / tweenSpeed
-local fallbackStartTime = tick()
-local fallbackConnection
-fallbackConnection = RunService.Heartbeat:Connect(function()
-if not char:FindFirstChild("StolenObject") then
-fallbackConnection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-return
-end
-local fallbackElapsed = tick() - fallbackStartTime
-local fallbackAlpha = math.clamp(fallbackElapsed / fallbackDuration, 0, 1)
-local fallbackNewPos = fallbackStartPos:Lerp(fallbackTarget, fallbackAlpha)
-hrp.CFrame = CFrame.new(fallbackNewPos) * hrp.CFrame.Rotation
-if fallbackAlpha >= 1 then
-fallbackConnection:Disconnect()
+
 if humanoid then
 humanoid.WalkSpeed = originalWalkSpeed
 humanoid.JumpPower = originalJumpPower
 end
 end
-end)
+end
+end
+end
 end
 end
 return
-end
-if alpha >= 1 then
-connection:Disconnect()
-if humanoid then
-humanoid.WalkSpeed = originalWalkSpeed
-humanoid.JumpPower = originalJumpPower
-end
-end
-end)
-end
-end
-end
-end
-break
-end
-end
-end
 end
 end)
 end
@@ -442,7 +326,7 @@ stealPage:CreateSlider("Tween Speed", 10, 75, tweenSpeed, function(v)
 tweenSpeed = v
 end)
 
-stealPage:CreateDropdown("Delivery Mode", {"Lerp", "Direct"}, "Lerp", function(v)
+stealPage:CreateDropdown("Delivery Mode", {"Direct"}, "Direct", function(v)
 deliveryMode = v
 end)
 
@@ -532,9 +416,6 @@ end
 end
 end
 
-if not bestPet then
-warn("No valid available pet found")
-end
 return bestPet, maxValue
 end
 
@@ -558,9 +439,6 @@ end
 end
 end
 
-if not bestPet then
-warn("No valid pet found")
-end
 return bestPet, maxValue
 end
 
@@ -725,7 +603,7 @@ task.wait()
 end
 end
 
-basePage:CreateDropdown("Auto Lock Mode", {"Pathfinding", "Lerp"}, "Pathfinding", function(v)
+basePage:CreateDropdown("Auto Lock Mode", {"Lerp", "Pathfinding"}, "Lerp", function(v)
 autoLockMode = v
 end)
 
