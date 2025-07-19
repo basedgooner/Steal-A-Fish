@@ -1,0 +1,609 @@
+local GUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/basedgooner/Luno-V2/refs/heads/main/Luno%20V2"))()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local PathfindingService = game:GetService("PathfindingService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local window = GUI:CreateWindow("Steal A Fish - Levi")
+local stealPage = window:CreatePage("Steal")
+local movementPage = window:CreatePage("Movement")
+local visualsPage = window:CreatePage("Visuals")
+local basePage = window:CreatePage("Base")
+
+local walkSpeed = 40
+local speedEnabled = false
+local infiniteJumpEnabled = false
+local noclipEnabled = false
+local autostealEnabled = false
+local isScanning = false
+local espEnabled = false
+local espObjects = {}
+local bestAvailablePet = nil
+local bestOverallPet = nil
+local autostealCoroutine = nil
+local timerThreshold = 3
+local minPetValue = 0
+local tweenSpeed = 30
+local autoLockEnabled = false
+local autoLockCoroutine = nil
+
+-- Steal remote
+local voidSky = ReplicatedStorage:WaitForChild("voidSky")
+local remotes = voidSky:WaitForChild("Remotes")
+local serverRemotes = remotes:WaitForChild("Server")
+local objectsRemotes = serverRemotes:WaitForChild("Objects")
+local trashRemotes = objectsRemotes:WaitForChild("Trash")
+local stealRemote = trashRemotes:WaitForChild("Steal")
+
+-- Hook steal detection
+if stealRemote and stealRemote:IsA("RemoteEvent") then
+    local mt = getrawmetatable(stealRemote)
+    setreadonly(mt, false)
+    local oldFireServer = mt.__index[stealRemote].FireServer
+    mt.__index[stealRemote].FireServer = newcclosure(function(self, ...)
+        print("Localplayer is stealing at " .. os.date("%I:%M %p PDT", os.time()))
+        
+        return oldFireServer(self, ...)
+    end)
+    setreadonly(mt, true)
+end
+
+-- Delivery handling
+local function setupDelivery(char)
+    char.ChildAdded:Connect(function(child)
+        if child.Name == "StolenObject" then
+            print("StolenObject added at " .. os.date("%I:%M %p PDT", os.time()))
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            local originalWalkSpeed = 0
+            local originalJumpPower = 0
+            if humanoid then
+                originalWalkSpeed = humanoid.WalkSpeed
+                originalJumpPower = humanoid.JumpPower
+                humanoid.WalkSpeed = 0
+                humanoid.JumpPower = 0
+            end
+            local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+            if tycoonsFolder then
+                for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+                    if tycoon:GetAttribute("Owner") == player.Name then
+                        local collectZone = tycoon:FindFirstChild("Tycoon"):FindFirstChild("CollectZone")
+                        if collectZone then
+                            local collectPart = collectZone:FindFirstChild("CollectPart")
+                            if collectPart then
+                                local hrp = char:FindFirstChild("HumanoidRootPart")
+                                if hrp then
+                                    -- Lift up 35 studs
+                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 32, 0)
+                                    -- Lerp to collect at fixed speed
+                                    local startPos = hrp.Position
+                                    local targetPos = collectPart.Position
+                                    local distance = (targetPos - startPos).Magnitude
+                                    local duration = distance / tweenSpeed
+                                    local startTime = tick()
+                                    local connection
+                                    connection = RunService.Heartbeat:Connect(function()
+                                        if not char:FindFirstChild("StolenObject") then
+                                            connection:Disconnect()
+                                            if humanoid then
+                                                humanoid.WalkSpeed = originalWalkSpeed
+                                                humanoid.JumpPower = originalJumpPower
+                                            end
+                                            return
+                                        end
+                                        local elapsed = tick() - startTime
+                                        local alpha = math.clamp(elapsed / duration, 0, 1)
+                                        local newPos = startPos:Lerp(targetPos, alpha)
+                                        hrp.CFrame = CFrame.new(newPos) * hrp.CFrame.Rotation
+                                        local currentPos = hrp.Position
+                                        if (currentPos - targetPos).Magnitude <= 50 then
+                                            connection:Disconnect()
+                                            if humanoid then
+                                                humanoid.WalkSpeed = originalWalkSpeed
+                                                humanoid.JumpPower = originalJumpPower
+                                            end
+                                            local path = PathfindingService:CreatePath({
+                                                AgentRadius = 2,
+                                                AgentHeight = 5,
+                                                AgentCanJump = true
+                                            })
+                                            local success, errorMessage = pcall(function()
+                                                path:ComputeAsync(currentPos, targetPos)
+                                            end)
+                                            if success and path.Status == Enum.PathStatus.Success then
+                                                local waypoints = path:GetWaypoints()
+                                                for _, waypoint in ipairs(waypoints) do
+                                                    if not char:FindFirstChild("StolenObject") then
+                                                        if humanoid then
+                                                            humanoid.WalkSpeed = originalWalkSpeed
+                                                            humanoid.JumpPower = originalJumpPower
+                                                        end
+                                                        return
+                                                    end
+                                                    humanoid:MoveTo(waypoint.Position)
+                                                    if waypoint.Action == Enum.PathWaypointAction.Jump then
+                                                        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                                                    end
+                                                    local reached = humanoid.MoveToFinished:Wait(2)
+                                                    if not reached then
+                                                        break
+                                                    end
+                                                end
+                                            else
+                                                -- Fallback to tweening
+                                                if humanoid then
+                                                    humanoid.WalkSpeed = 0
+                                                    humanoid.JumpPower = 0
+                                                end
+                                                local fallbackStartPos = hrp.Position
+                                                local fallbackDistance = (targetPos - fallbackStartPos).Magnitude
+                                                local fallbackDuration = fallbackDistance / tweenSpeed
+                                                local fallbackStartTime = tick()
+                                                local fallbackConnection
+                                                fallbackConnection = RunService.Heartbeat:Connect(function()
+                                                    if not char:FindFirstChild("StolenObject") then
+                                                        fallbackConnection:Disconnect()
+                                                        if humanoid then
+                                                            humanoid.WalkSpeed = originalWalkSpeed
+                                                            humanoid.JumpPower = originalJumpPower
+                                                        end
+                                                        return
+                                                    end
+                                                    local fallbackElapsed = tick() - fallbackStartTime
+                                                    local fallbackAlpha = math.clamp(fallbackElapsed / fallbackDuration, 0, 1)
+                                                    local fallbackNewPos = fallbackStartPos:Lerp(targetPos, fallbackAlpha)
+                                                    hrp.CFrame = CFrame.new(fallbackNewPos) * hrp.CFrame.Rotation
+                                                    if fallbackAlpha >= 1 then
+                                                        fallbackConnection:Disconnect()
+                                                        if humanoid then
+                                                            humanoid.WalkSpeed = originalWalkSpeed
+                                                            humanoid.JumpPower = originalJumpPower
+                                                        end
+                                                    end
+                                                end)
+                                            end
+                                            return
+                                        end
+                                        if alpha >= 1 then
+                                            connection:Disconnect()
+                                            if humanoid then
+                                                humanoid.WalkSpeed = originalWalkSpeed
+                                                humanoid.JumpPower = originalJumpPower
+                                            end
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end)
+end
+
+if player.Character then
+    setupDelivery(player.Character)
+end
+
+player.CharacterAdded:Connect(setupDelivery)
+
+UserInputService.JumpRequest:Connect(function()
+    if infiniteJumpEnabled and player.Character then
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if hum and hum:GetState() ~= Enum.HumanoidStateType.Seated then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+movementPage:CreateToggle("Speed Hack", false, function(state)
+    speedEnabled = state
+end)
+
+movementPage:CreateSlider("Walk Speed", 16, 100, walkSpeed, function(v)
+    walkSpeed = v
+end)
+
+movementPage:CreateToggle("Infinite Jump", false, function(state)
+    infiniteJumpEnabled = state
+end)
+
+movementPage:CreateToggle("Noclip", false, function(state)
+    noclipEnabled = state
+end)
+
+RunService.Stepped:Connect(function()
+    if noclipEnabled and player.Character then
+        for _, part in ipairs(player.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+    if speedEnabled and player.Character then
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.WalkSpeed = walkSpeed
+        end
+    end
+end)
+
+local function clearESP()
+    for _, obj in pairs(espObjects) do
+        if obj then obj:Destroy() end
+    end
+    espObjects = {}
+end
+
+local function startRainbow(obj, prop)
+    local cycleTime = 4
+    task.spawn(function()
+        while obj and obj.Parent do
+            local h = (tick() % cycleTime) / cycleTime
+            obj[prop] = Color3.fromHSV(h, 1, 1)
+            RunService.Heartbeat:Wait()
+        end
+    end)
+end
+
+local function createBestESPPet(pet, value)
+    local root = pet:FindFirstChild("Root") or pet:FindFirstChild("RootPart") or pet:FindFirstChildWhichIsA("BasePart")
+    if not root then return end
+
+    local hl = Instance.new('Highlight')
+    hl.Name = "PetESP"
+    hl.Adornee = pet
+    hl.OutlineColor = Color3.new(0, 0, 0)
+    hl.FillTransparency = 0.25
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = pet
+    startRainbow(hl, "FillColor")
+    startRainbow(hl, "OutlineColor")
+
+    local gui = Instance.new('BillboardGui')
+    gui.Name = "PetESP_Label"
+    gui.Adornee = root
+    gui.AlwaysOnTop = true
+    gui.Size = UDim2.new(0, 400, 0, 80)
+    gui.StudsOffset = Vector3.new(0, 6.5, 0)
+    gui.Parent = pet
+
+    local n = Instance.new('TextLabel')
+    n.Size = UDim2.new(1, 0, 0.5, 0)
+    n.Position = UDim2.new(0.5, 0, 0.35, 0)
+    n.AnchorPoint = Vector2.new(0.5, 0.5)
+    n.BackgroundTransparency = 1
+    n.Font = Enum.Font.GothamBlack
+    n.TextSize = 22
+    n.Text = pet.Name:upper()
+    n.TextXAlignment = Enum.TextXAlignment.Center
+    n.Parent = gui
+
+    local ns = Instance.new('UIStroke')
+    ns.Thickness = 4.5
+    ns.Color = Color3.new(0, 0, 0)
+    ns.Parent = n
+
+    local nso = Instance.new('UIStroke')
+    nso.Thickness = 5.5
+    nso.Color = Color3.new(1, 1, 1)
+    nso.Parent = n
+
+    local gL = Instance.new('TextLabel')
+    gL.Size = UDim2.new(1, 0, 0.5, 0)
+    gL.Position = UDim2.new(0.5, 0, 0.75, 0)
+    gL.AnchorPoint = Vector2.new(0.5, 0.5)
+    gL.BackgroundTransparency = 1
+    gL.Font = Enum.Font.GothamBlack
+    gL.TextSize = 32
+    gL.Text = '$' .. formatNumber(value)
+    gL.TextXAlignment = Enum.TextXAlignment.Center
+    gL.Parent = gui
+
+    local gs = Instance.new('UIStroke')
+    gs.Thickness = 6
+    gs.Color = Color3.new(0, 0, 0)
+    gs.Parent = gL
+
+    local gso = Instance.new('UIStroke')
+    gso.Thickness = 7
+    gso.Color = Color3.new(1, 1, 1)
+    gso.Parent = gL
+
+    startRainbow(n, 'TextColor')
+    startRainbow(gL, 'TextColor')
+
+    table.insert(espObjects, hl)
+    table.insert(espObjects, gui)
+end
+
+function formatNumber(num)
+    if num == nil then return "0" end
+    return tostring(num):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
+visualsPage:CreateToggle("Best Pet ESP", false, function(state)
+    espEnabled = state
+    if not state then
+        clearESP()
+    end
+end)
+
+stealPage:CreateSlider("Timer Threshold (s)", 1, 10, timerThreshold, function(v)
+    timerThreshold = v
+end)
+
+stealPage:CreateSlider("Min Pet Value", 0, 10000000, minPetValue, function(v)
+    minPetValue = v
+end)
+
+stealPage:CreateSlider("Tween Speed", 10, 100, tweenSpeed, function(v)
+    tweenSpeed = v
+end)
+
+local function parseTime(timeText)
+    if not timeText or type(timeText) ~= "string" then return math.huge end
+    local num = tonumber(timeText:match("(%d+)")) or 0
+    if timeText:match("h") then num = num * 3600
+    elseif timeText:match("m") then num = num * 60
+    elseif timeText:match("s") then -- do nothing, already in seconds
+    else return math.huge end
+    return num
+end
+
+local function getTycoonTimer(tycoonInner)
+    local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
+    if forcefieldFolder then
+        local screen = forcefieldFolder:FindFirstChild("Screen")
+        if screen then
+            local surfaceGui = screen:FindFirstChild("Screen") and screen.Screen:FindFirstChild("SurfaceGui")
+            if surfaceGui then
+                local timeLabel = surfaceGui:FindFirstChild("Time")
+                if timeLabel and timeLabel:IsA("TextLabel") then
+                    return parseTime(timeLabel.Text)
+                end
+            end
+        end
+    end
+    return math.huge
+end
+
+local function findBestPetInTycoon(tycoon)
+    local maxValue = -math.huge
+    local bestPetInTycoon = nil
+
+    local tempFolder = tycoon:FindFirstChild("Temporary")
+    if tempFolder then
+        for _, pet in ipairs(tempFolder:GetChildren()) do
+            if pet:IsA("Model") and pet:FindFirstChild("Root") then
+                local unstealable = false
+                for _, desc in ipairs(pet:GetDescendants()) do
+                    if desc:IsA("TextLabel") and desc.Text == "UNSTEALABE" then
+                        unstealable = true
+                        break
+                    end
+                end
+                if unstealable then continue end
+                local infoFolder = pet:FindFirstChild("Information")
+                if infoFolder then
+                    local priceValue = infoFolder:FindFirstChild("Price")
+                    if priceValue and priceValue:IsA("NumberValue") then
+                        local value = priceValue.Value
+                        if value > maxValue and value >= minPetValue then
+                            maxValue = value
+                            bestPetInTycoon = pet
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return bestPetInTycoon, maxValue
+end
+
+local function scanForBestAvailablePet()
+    local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+    if not tycoonsFolder then
+        warn("Tycoons folder not found")
+        return nil, 0
+    end
+
+    local maxValue = -math.huge
+    local bestPet = nil
+
+    for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+        if tycoon:GetAttribute("Owner") ~= player.Name then
+            local tycoonInner = tycoon:FindFirstChild("Tycoon")
+            if tycoonInner then
+                local timer = getTycoonTimer(tycoonInner)
+                if timer <= timerThreshold then
+                    local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
+                    if bestInTycoon and valueInTycoon > maxValue then
+                        maxValue = valueInTycoon
+                        bestPet = bestInTycoon
+                    end
+                end
+            end
+        end
+    end
+
+    if not bestPet then
+        warn("No valid available pet found")
+    end
+    return bestPet, maxValue
+end
+
+local function scanForOverallBestPet()
+    local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+    if not tycoonsFolder then
+        warn("Tycoons folder not found")
+        return nil, 0
+    end
+
+    local maxValue = -math.huge
+    local bestPet = nil
+
+    for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+        if tycoon:GetAttribute("Owner") ~= player.Name then
+            local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
+            if bestInTycoon and valueInTycoon > maxValue then
+                maxValue = valueInTycoon
+                bestPet = bestInTycoon
+            end
+        end
+    end
+
+    if not bestPet then
+        warn("No valid pet found")
+    end
+    return bestPet, maxValue
+end
+
+local function startScanLoop()
+    if isScanning then return end
+    isScanning = true
+    while isScanning do
+        local bestAvailable, availableValue = scanForBestAvailablePet()
+        bestAvailablePet = bestAvailable
+        local bestOverall, overallValue = scanForOverallBestPet()
+        bestOverallPet = bestOverall
+        if espEnabled and bestAvailable and availableValue then
+            clearESP()
+            createBestESPPet(bestAvailable, availableValue)
+        end
+        task.wait(0.5)
+    end
+    clearESP()
+end
+
+local function autostealLoop()
+    while autostealEnabled do
+        local char = player.Character
+        if char and char:FindFirstChild("StolenObject") then
+            task.wait(0.2)
+            continue
+        end
+        local best = bestAvailablePet
+        if best and best.Parent then
+            local tycoonOuter = best.Parent.Parent
+            local tycoonInner = tycoonOuter:FindFirstChild("Tycoon")
+            if tycoonInner then
+                local timer = getTycoonTimer(tycoonInner)
+                if timer <= timerThreshold then
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
+                        if root then
+                            hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
+                            task.wait(0.1)
+                            local ownerName = best:GetAttribute("Trash_Owner")
+                            if ownerName and ownerName ~= player.Name then
+                                local ownerPlayer = Players:FindFirstChild(ownerName)
+                                if ownerPlayer then
+                                    local trashID = best:GetAttribute("Trash_ID")
+                                    if trashID then
+                                        stealRemote:FireServer(ownerPlayer, trashID)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.2)
+    end
+end
+
+stealPage:CreateToggle("Autosteal Best Pet", false, function(state)
+    autostealEnabled = state
+    if state then
+        task.spawn(startScanLoop)
+        autostealCoroutine = task.spawn(autostealLoop)
+    else
+        isScanning = false
+        if autostealCoroutine then task.cancel(autostealCoroutine) autostealCoroutine = nil end
+    end
+end)
+
+stealPage:CreateButton("TP to Best Pet", function()
+    local best, _ = scanForOverallBestPet()
+    if best then
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
+            if root then
+                hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
+            else
+                window:Notify("No root part found for pet", "danger")
+            end
+        end
+    else
+        window:Notify("No pet found", "danger")
+    end
+end)
+
+local function autoLockLoop()
+    while autoLockEnabled do
+        local char = player.Character
+        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if humanoid and hrp then
+            local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+            if tycoonsFolder then
+                for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+                    if tycoon:GetAttribute("Owner") == player.Name then
+                        local tycoonInner = tycoon:FindFirstChild("Tycoon")
+                        if tycoonInner then
+                            local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
+                            if forcefieldFolder then
+                                local buttons = forcefieldFolder:FindFirstChild("Buttons")
+                                if buttons then
+                                    local forceFieldBuy = buttons:FindFirstChild("ForceFieldBuy")
+                                    if forceFieldBuy and forceFieldBuy.PrimaryPart then
+                                        local targetPos = forceFieldBuy.PrimaryPart.Position
+                                        local path = PathfindingService:CreatePath({
+                                            AgentRadius = 2,
+                                            AgentHeight = 5,
+                                            AgentCanJump = true
+                                        })
+                                        local success, _ = pcall(function()
+                                            path:ComputeAsync(hrp.Position, targetPos)
+                                        end)
+                                        if success and path.Status == Enum.PathStatus.Success then
+                                            local waypoints = path:GetWaypoints()
+                                            for _, waypoint in ipairs(waypoints) do
+                                                humanoid:MoveTo(waypoint.Position)
+                                                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                                                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                                                end
+                                                humanoid.MoveToFinished:Wait(2)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+
+basePage:CreateToggle("Auto Lock", false, function(state)
+    autoLockEnabled = state
+    if state then
+        autoLockCoroutine = task.spawn(autoLockLoop)
+    else
+        if autoLockCoroutine then task.cancel(autoLockCoroutine) autoLockCoroutine = nil end
+    end
+end)
