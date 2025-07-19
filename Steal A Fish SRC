@@ -343,8 +343,8 @@ local function createBestESPPet(pet, value)
     gso.Color = Color3.new(1, 1, 1)
     gso.Parent = gL
 
-    startRainbow(n, 'TextColor')
-    startRainbow(gL, 'TextColor')
+    startRainbow(n, 'TextColor3')
+    startRainbow(gL, 'TextColor3')
 
     table.insert(espObjects, hl)
     table.insert(espObjects, gui)
