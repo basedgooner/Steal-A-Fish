@@ -114,8 +114,8 @@ end
 local elevatedTarget = collectPart.Position + Vector3.new(0, height, 0) + offset
 if deliveryMode == "Direct" then
 -- First TP 30 studs above collectzone
-hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 30, 0)) * hrp.CFrame.Rotation
-window:Notify("Bypassing anticheat - waiting 5 seconds", "info")
+hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 40, 0)) * hrp.CFrame.Rotation
+window:Notify("Bypassing anticheat - waiting 6 seconds", "info")
 
 -- Spin during wait
 local spinning = true
@@ -126,7 +126,7 @@ spinConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
-task.wait(5.5)
+task.wait(6)
 
 spinning = false
 if spinConnection then spinConnection:Disconnect() end
