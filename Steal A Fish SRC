@@ -224,7 +224,7 @@ local elevatedTarget = collectPart.Position + Vector3.new(0, height, 0) + offset
 if deliveryMode == "Direct" then
 
 hrp.CFrame = CFrame.new(-13.760504722595215, 17.080080032348633, 381.9714660644531)
-window:Notify("Bypassing anticheat - waiting 5 seconds", "info")
+window:Notify("Bypassing anticheat - waiting 6 seconds", "info")
 
 -- Spin during wait
 local spinning = true
@@ -235,7 +235,7 @@ spinConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
-task.wait(5.75)
+task.wait(6.25)
 
 spinning = false
 if spinConnection then spinConnection:Disconnect() end
