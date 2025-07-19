@@ -86,9 +86,9 @@ local function setupDelivery(char)
                                 local hrp = char:FindFirstChild("HumanoidRootPart")
                                 if hrp then
                                     -- Lift up 50 studs
-                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 30, 0)
+                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
                                     -- Lerp to elevated delivery
-                                    local elevatedTarget = collectPart.Position + Vector3.new(0, 30, 0)
+                                    local elevatedTarget = collectPart.Position + Vector3.new(0, 25, 0)
                                     local startPos = hrp.Position
                                     local distance = (elevatedTarget - startPos).Magnitude
                                     local duration = distance / tweenSpeed
@@ -108,7 +108,7 @@ local function setupDelivery(char)
                                         local newPos = startPos:Lerp(elevatedTarget, alpha)
                                         hrp.CFrame = CFrame.new(newPos) * hrp.CFrame.Rotation
                                         local currentPos = hrp.Position
-                                        if (currentPos - collectPart.Position).Magnitude <= 50 then
+                                        if (currentPos - collectPart.Position).Magnitude <= 35 then
                                             connection:Disconnect()
                                             if humanoid then
                                                 humanoid.WalkSpeed = originalWalkSpeed
