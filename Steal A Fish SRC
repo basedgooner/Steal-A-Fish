@@ -13,18 +13,18 @@ local movementPage = window:CreatePage("Movement")
 local visualsPage = window:CreatePage("Visuals")
 local basePage = window:CreatePage("Base")
 
-local walkSpeed = 50
+local walkSpeed = 40
 local speedEnabled = false
 local infiniteJumpEnabled = false
 local noclipEnabled = false
 local autostealEnabled = false
-local scanningEnabled = false
+local isScanning = false
 local espEnabled = false
 local espObjects = {}
 local bestAvailablePet = nil
 local bestOverallPet = nil
 local autostealCoroutine = nil
-local timerThreshold = 1
+local timerThreshold = 2
 local minPetValue = 0
 local tweenSpeed = 30
 local autoLockEnabled = false
@@ -103,7 +103,6 @@ end
 end
 end
 end
-end
 local height = 50
 local offset = Vector3.new(0, 0, 0)
 if nearestDist < math.huge then
@@ -115,8 +114,8 @@ end
 local elevatedTarget = collectPart.Position + Vector3.new(0, height, 0) + offset
 if deliveryMode == "Direct" then
 -- First TP 30 studs above collectzone
-hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 40, 0)) * hrp.CFrame.Rotation
-window:Notify("Bypassing anticheat - waiting 7 seconds", "info")
+hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 30, 0)) * hrp.CFrame.Rotation
+window:Notify("Bypassing anticheat - waiting 5 seconds", "info")
 
 -- Spin during wait
 local spinning = true
@@ -127,7 +126,7 @@ spinConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
-task.wait(7)
+task.wait(5.5)
 
 spinning = false
 if spinConnection then spinConnection:Disconnect() end
@@ -317,7 +316,6 @@ espEnabled = state
 if not state then
 clearESP()
 end
-updateScanning()
 end)
 
 stealPage:CreateSlider("Min Pet Value", 0, 10000000, minPetValue, function(v)
@@ -420,67 +418,45 @@ end
 
 return bestPet, maxValue
 end
+
 local function scanForOverallBestPet()
-    local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
-    if not tycoonsFolder then
-        warn("Tycoons folder not found")
-        return nil, 0
-    end
-
-    local maxValue = -math.huge
-    local bestPet = nil
-
-    for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
-        if tycoon:GetAttribute("Owner") ~= player.Name then
-            local tycoonInner = tycoon:FindFirstChild("Tycoon")
-            if tycoonInner then
-                -- 🔄 SKIP timer check, just look for best value pet
-                local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
-                if bestInTycoon and valueInTycoon > maxValue then
-                    maxValue = valueInTycoon
-                    bestPet = bestInTycoon
-                end
-            end
-        end
-    end
-
-    return bestPet, maxValue
+local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+if not tycoonsFolder then
+warn("Tycoons folder not found")
+return nil, 0
 end
 
-local scanLoopRunning = false
+local maxValue = -math.huge
+local bestPet = nil
 
-local function updateScanning()
-    local shouldScan = autostealEnabled or espEnabled
-    if shouldScan and not scanLoopRunning then
-        task.spawn(scanLoop)
-    end
+for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+if tycoon:GetAttribute("Owner") ~= player.Name then
+local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
+if bestInTycoon and valueInTycoon > maxValue then
+maxValue = valueInTycoon
+bestPet = bestInTycoon
+end
+end
 end
 
-local function scanLoop()
-    scanLoopRunning = true
-    scanningEnabled = true
+return bestPet, maxValue
+end
 
-    while autostealEnabled or espEnabled do
-        if autostealEnabled then
-            local bestAvailable, availableValue = scanForBestAvailablePet()
-            bestAvailablePet = bestAvailable
-        end
-
-        if espEnabled then
-            local bestOverall, overallValue = scanForOverallBestPet()
-            bestOverallPet = bestOverall
-            clearESP()
-            if bestOverall and overallValue then
-                createBestESPPet(bestOverall, overallValue)
-            end
-        end
-
-        task.wait(0.5)
-    end
-
-    clearESP()
-    scanningEnabled = false
-    scanLoopRunning = false
+local function startScanLoop()
+if isScanning then return end
+isScanning = true
+while isScanning do
+local bestAvailable, availableValue = scanForBestAvailablePet()
+bestAvailablePet = bestAvailable
+local bestOverall, overallValue = scanForOverallBestPet()
+bestOverallPet = bestOverall
+if espEnabled and bestOverall and overallValue then
+clearESP()
+createBestESPPet(bestOverall, overallValue)
+end
+task.wait()
+end
+clearESP()
 end
 
 local function autostealLoop()
@@ -518,7 +494,6 @@ end
 end
 end
 end
-end
 task.wait()
 end
 end
@@ -526,11 +501,12 @@ end
 stealPage:CreateToggle("Autosteal Best Pet", false, function(state)
 autostealEnabled = state
 if state then
+task.spawn(startScanLoop)
 autostealCoroutine = task.spawn(autostealLoop)
 else
+isScanning = false
 if autostealCoroutine then task.cancel(autostealCoroutine) autostealCoroutine = nil end
 end
-updateScanning()
 end)
 
 stealPage:CreateButton("TP to Best Pet", function()
