@@ -163,7 +163,6 @@ local mt = getrawmetatable(stealRemote)
 setreadonly(mt, false)
 local oldFireServer = mt.__index[stealRemote].FireServer
 mt.__index[stealRemote].FireServer = newcclosure(function(self, ...)
-print("Localplayer is stealing at " .. os.date("%I:%M %p PDT", os.time()))
 
 return oldFireServer(self, ...)
 end)
@@ -174,7 +173,6 @@ end
 local function setupDelivery(char)
 char.ChildAdded:Connect(function(child)
 if child.Name == "StolenObject" then
-print("StolenObject added at " .. os.date("%I:%M %p PDT", os.time()))
 local humanoid = char:FindFirstChildOfClass("Humanoid")
 local originalWalkSpeed = 0
 local originalJumpPower = 0
@@ -194,7 +192,7 @@ local collectPart = collectZone:FindFirstChild("CollectPart")
 if collectPart then
 local hrp = char:FindFirstChild("HumanoidRootPart")
 if hrp then
-local nearestDist = math.huge
+local nearestDist = nil
 local nearestDir = Vector3.new()
 for _, p in ipairs(Players:GetPlayers()) do
 if p ~= player then
@@ -203,9 +201,9 @@ if pchar then
 local phrp = pchar:FindFirstChild("HumanoidRootPart")
 if phrp then
 local dist = (hrp.Position - phrp.Position).Magnitude
-if dist < nearestDist then
-nearestDist = dist
-nearestDir = (hrp.Position - phrp.Position).Unit
+if not nearestDist or dist < nearestDist then
+    nearestDist = dist
+    nearestDir = (hrp.Position - phrp.Position).Unit
 end
 end
 end
@@ -214,7 +212,7 @@ end
 end
 local height = 50
 local offset = Vector3.new(0, 0, 0)
-if nearestDist < math.huge then
+if nearestDist then
 height = 50 - math.clamp(nearestDist / 2, 0, 30)
 offset = nearestDir * 5
 else
@@ -465,44 +463,72 @@ end
 return bestPet, maxValue
 end
 
+local function getLocalTycoonInner()
+local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+if tycoonsFolder then
+for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+if tycoon:GetAttribute("Owner") == player.Name then
+return tycoon:FindFirstChild("Tycoon")
+end
+end
+end
+return nil
+end
 local function autostealLoop()
-while autostealEnabled do
-local char = player.Character
-if char and char:FindFirstChild("StolenObject") then
-task.wait()
-continue
+    while autostealEnabled do
+        -- Check for AutoLock override
+        if autoLockEnabled then
+            local tycoonInner = getLocalTycoonInner()
+            if tycoonInner then
+                local timer = getTycoonTimer(tycoonInner)
+                if timer and timer < 5 then
+                    window:Notify("Autosteal paused - AutoLock is handling Forcefield", "warning")
+                    repeat
+                        task.wait(1)
+                        timer = getTycoonTimer(tycoonInner)
+                    until not autoLockEnabled or timer >= 5
+                end
+            end
+        end
+
+        local char = player.Character
+        if char and char:FindFirstChild("StolenObject") then
+            task.wait()
+            continue
+        end
+
+        local best = bestAvailablePet
+        if best and best.Parent then
+            local tycoonOuter = best.Parent.Parent
+            local tycoonInner = tycoonOuter:FindFirstChild("Tycoon")
+            if tycoonInner then
+                local timer = getTycoonTimer(tycoonInner)
+                if timer <= timerThreshold then
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
+                        if root then
+                            hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
+                            task.wait()
+                            local ownerName = best:GetAttribute("Trash_Owner")
+                            if ownerName and ownerName ~= player.Name then
+                                local ownerPlayer = Players:FindFirstChild(ownerName)
+                                if ownerPlayer then
+                                    local trashID = best:GetAttribute("Trash_ID")
+                                    if trashID then
+                                        stealRemote:FireServer(ownerPlayer, trashID)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait()
+    end
 end
-local best = bestAvailablePet
-if best and best.Parent then
-local tycoonOuter = best.Parent.Parent
-local tycoonInner = tycoonOuter:FindFirstChild("Tycoon")
-if tycoonInner then
-local timer = getTycoonTimer(tycoonInner)
-if timer <= timerThreshold then
-local hrp = char and char:FindFirstChild("HumanoidRootPart")
-if hrp then
-local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
-if root then
-hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
-task.wait()
-local ownerName = best:GetAttribute("Trash_Owner")
-if ownerName and ownerName ~= player.Name then
-local ownerPlayer = Players:FindFirstChild(ownerName)
-if ownerPlayer then
-local trashID = best:GetAttribute("Trash_ID")
-if trashID then
-stealRemote:FireServer(ownerPlayer, trashID)
-end
-end
-end
-end
-end
-end
-end
-end
-task.wait()
-end
-end
+
 
 stealPage:CreateToggle("Autosteal Best Pet", false, function(state)
 autostealEnabled = state
@@ -532,18 +558,6 @@ else
 window:Notify("No pet found", "danger")
 end
 end)
-
-local function getLocalTycoonInner()
-local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
-if tycoonsFolder then
-for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
-if tycoon:GetAttribute("Owner") == player.Name then
-return tycoon:FindFirstChild("Tycoon")
-end
-end
-end
-return nil
-end
 
 local function autoLockLoop()
 while autoLockEnabled do
