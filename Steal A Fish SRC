@@ -476,7 +476,7 @@ local function startScanLoop()
             clearESP()
             createBestESPPet(bestAvailable, availableValue)
         end
-        task.wait(0.5)
+        task.wait()
     end
     clearESP()
 end
@@ -485,7 +485,7 @@ local function autostealLoop()
     while autostealEnabled do
         local char = player.Character
         if char and char:FindFirstChild("StolenObject") then
-            task.wait(0.2)
+            task.wait()
             continue
         end
         local best = bestAvailablePet
@@ -500,7 +500,7 @@ local function autostealLoop()
                         local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
                         if root then
                             hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
-                            task.wait(0.1)
+                            task.wait()
                             local ownerName = best:GetAttribute("Trash_Owner")
                             if ownerName and ownerName ~= player.Name then
                                 local ownerPlayer = Players:FindFirstChild(ownerName)
@@ -516,7 +516,7 @@ local function autostealLoop()
                 end
             end
         end
-        task.wait(0.2)
+        task.wait()
     end
 end
 
