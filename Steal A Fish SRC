@@ -481,12 +481,12 @@ local function autostealLoop()
             local tycoonInner = getLocalTycoonInner()
             if tycoonInner then
                 local timer = getTycoonTimer(tycoonInner)
-                if timer and timer < 5 then
+                if timer and timer < 10 then
                     window:Notify("Autosteal paused - AutoLock is handling Forcefield", "warning")
                     repeat
                         task.wait(1)
                         timer = getTycoonTimer(tycoonInner)
-                    until not autoLockEnabled or timer >= 5
+                    until not autoLockEnabled or timer >= 10
                 end
             end
         end
