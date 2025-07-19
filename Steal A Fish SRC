@@ -86,9 +86,9 @@ local function setupDelivery(char)
                                 local hrp = char:FindFirstChild("HumanoidRootPart")
                                 if hrp then
                                     -- Lift up 50 studs
-                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 50, 0)
+                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 30, 0)
                                     -- Lerp to elevated delivery
-                                    local elevatedTarget = collectPart.Position + Vector3.new(0, 50, 0)
+                                    local elevatedTarget = collectPart.Position + Vector3.new(0, 30, 0)
                                     local startPos = hrp.Position
                                     local distance = (elevatedTarget - startPos).Magnitude
                                     local duration = distance / tweenSpeed
