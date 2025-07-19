@@ -85,12 +85,12 @@ local function setupDelivery(char)
                             if collectPart then
                                 local hrp = char:FindFirstChild("HumanoidRootPart")
                                 if hrp then
-                                    -- Lift up 35 studs
-                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
-                                    -- Lerp to collect at fixed speed
+                                    -- Lift up 50 studs
+                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 50, 0)
+                                    -- Lerp to elevated delivery
+                                    local elevatedTarget = collectPart.Position + Vector3.new(0, 50, 0)
                                     local startPos = hrp.Position
-                                    local targetPos = collectPart.Position
-                                    local distance = (targetPos - startPos).Magnitude
+                                    local distance = (elevatedTarget - startPos).Magnitude
                                     local duration = distance / tweenSpeed
                                     local startTime = tick()
                                     local connection
@@ -105,10 +105,10 @@ local function setupDelivery(char)
                                         end
                                         local elapsed = tick() - startTime
                                         local alpha = math.clamp(elapsed / duration, 0, 1)
-                                        local newPos = startPos:Lerp(targetPos, alpha)
+                                        local newPos = startPos:Lerp(elevatedTarget, alpha)
                                         hrp.CFrame = CFrame.new(newPos) * hrp.CFrame.Rotation
                                         local currentPos = hrp.Position
-                                        if (currentPos - targetPos).Magnitude <= 75 then
+                                        if (currentPos - collectPart.Position).Magnitude <= 50 then
                                             connection:Disconnect()
                                             if humanoid then
                                                 humanoid.WalkSpeed = originalWalkSpeed
@@ -120,7 +120,7 @@ local function setupDelivery(char)
                                                 AgentCanJump = true
                                             })
                                             local success, errorMessage = pcall(function()
-                                                path:ComputeAsync(currentPos, targetPos)
+                                                path:ComputeAsync(currentPos, collectPart.Position)
                                             end)
                                             if success and path.Status == Enum.PathStatus.Success then
                                                 local waypoints = path:GetWaypoints()
@@ -142,13 +142,14 @@ local function setupDelivery(char)
                                                     end
                                                 end
                                             else
-                                                -- Fallback to tweening
+                                                -- Fallback to direct lerp without extra Y
                                                 if humanoid then
                                                     humanoid.WalkSpeed = 0
                                                     humanoid.JumpPower = 0
                                                 end
                                                 local fallbackStartPos = hrp.Position
-                                                local fallbackDistance = (targetPos - fallbackStartPos).Magnitude
+                                                local fallbackTarget = collectPart.Position
+                                                local fallbackDistance = (fallbackTarget - fallbackStartPos).Magnitude
                                                 local fallbackDuration = fallbackDistance / tweenSpeed
                                                 local fallbackStartTime = tick()
                                                 local fallbackConnection
@@ -163,7 +164,7 @@ local function setupDelivery(char)
                                                     end
                                                     local fallbackElapsed = tick() - fallbackStartTime
                                                     local fallbackAlpha = math.clamp(fallbackElapsed / fallbackDuration, 0, 1)
-                                                    local fallbackNewPos = fallbackStartPos:Lerp(targetPos, fallbackAlpha)
+                                                    local fallbackNewPos = fallbackStartPos:Lerp(fallbackTarget, fallbackAlpha)
                                                     hrp.CFrame = CFrame.new(fallbackNewPos) * hrp.CFrame.Rotation
                                                     if fallbackAlpha >= 1 then
                                                         fallbackConnection:Disconnect()
