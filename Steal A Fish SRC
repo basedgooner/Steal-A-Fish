@@ -438,10 +438,6 @@ stealPage:CreateSlider("Min Pet Value", 0, 10000000, minPetValue, function(v)
 minPetValue = v
 end)
 
-stealPage:CreateSlider("Tween Speed", 10, 75, tweenSpeed, function(v)
-tweenSpeed = v
-end)
-
 stealPage:CreateDropdown("Delivery Mode", {"Direct"}, "Direct", function(v)
 deliveryMode = v
 end)
