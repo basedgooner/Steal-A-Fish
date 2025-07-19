@@ -26,7 +26,7 @@ local bestOverallPet = nil
 local autostealCoroutine = nil
 local timerThreshold = 2
 local minPetValue = 0
-local tweenSpeed = 30
+local tweenSpeed = 50
 local autoLockEnabled = false
 local autoLockCoroutine = nil
 local autoLockMode = "Lerp"
@@ -48,6 +48,114 @@ local serverRemotes = remotes:WaitForChild("Server")
 local objectsRemotes = serverRemotes:WaitForChild("Objects")
 local trashRemotes = objectsRemotes:WaitForChild("Trash")
 local stealRemote = trashRemotes:WaitForChild("Steal")
+
+
+local function parseTime(timeText)
+if not timeText or type(timeText) ~= "string" then return math.huge end
+local num = tonumber(timeText:match("(%d+)")) or 0
+if timeText:match("h") then num = num * 3600
+elseif timeText:match("m") then num = num * 60
+elseif timeText:match("s") then -- do nothing, already in seconds
+else return math.huge end
+return num
+end
+
+local function getTycoonTimer(tycoonInner)
+local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
+if forcefieldFolder then
+local screen = forcefieldFolder:FindFirstChild("Screen")
+if screen then
+local surfaceGui = screen:FindFirstChild("Screen") and screen.Screen:FindFirstChild("SurfaceGui")
+if surfaceGui then
+local timeLabel = surfaceGui:FindFirstChild("Time")
+if timeLabel and timeLabel:IsA("TextLabel") then
+return parseTime(timeLabel.Text)
+end
+end
+end
+end
+return math.huge
+end
+
+
+local function findBestPetInTycoon(tycoon)
+local maxValue = -math.huge
+local bestPetInTycoon = nil
+
+local tempFolder = tycoon:FindFirstChild("Temporary")
+if tempFolder then
+for _, pet in ipairs(tempFolder:GetChildren()) do
+if pet:IsA("Model") and pet:FindFirstChild("Root") then
+local unstealable = false
+for _, desc in ipairs(pet:GetDescendants()) do
+if desc:IsA("TextLabel") and desc.Text == "UNSTEALABE" then
+unstealable = true
+break
+end
+end
+if unstealable then continue end
+local infoFolder = pet:FindFirstChild("Information")
+if infoFolder then
+local priceValue = infoFolder:FindFirstChild("Price")
+if priceValue and priceValue:IsA("NumberValue") then
+local value = priceValue.Value
+if value > maxValue and value >= minPetValue then
+maxValue = value
+bestPetInTycoon = pet
+end
+end
+end
+end
+end
+end
+return bestPetInTycoon, maxValue
+end
+scanForBestAvailablePet = function()
+
+local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+if not tycoonsFolder then
+warn("Tycoons folder not found")
+return nil, 0
+end
+
+local maxValue = -math.huge
+local bestPet = nil
+
+for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
+if tycoon:GetAttribute("Owner") ~= player.Name then
+local tycoonInner = tycoon:FindFirstChild("Tycoon")
+if tycoonInner then
+local timer = getTycoonTimer(tycoonInner)
+if timer <= timerThreshold then
+local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
+if bestInTycoon and valueInTycoon > maxValue then
+maxValue = valueInTycoon
+bestPet = bestInTycoon
+end
+end
+end
+end
+end
+
+return bestPet, maxValue
+end
+
+startScanLoop = function()
+    if isScanning then return end
+    isScanning = true
+    while isScanning do
+        local bestAvailable, availableValue = scanForBestAvailablePet()
+        bestAvailablePet = bestAvailable
+        local bestOverall, overallValue = scanForOverallBestPet()
+        bestOverallPet = bestOverall
+        if espEnabled and bestOverall and overallValue then
+            clearESP()
+            createBestESPPet(bestOverall, overallValue)
+        end
+        task.wait()
+    end
+    clearESP()
+end
 
 -- Hook steal detection
 if stealRemote and stealRemote:IsA("RemoteEvent") then
@@ -103,6 +211,7 @@ end
 end
 end
 end
+end
 local height = 50
 local offset = Vector3.new(0, 0, 0)
 if nearestDist < math.huge then
@@ -113,8 +222,8 @@ height = 25
 end
 local elevatedTarget = collectPart.Position + Vector3.new(0, height, 0) + offset
 if deliveryMode == "Direct" then
--- First TP 30 studs above collectzone
-hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 30, 0)) * hrp.CFrame.Rotation
+
+hrp.CFrame = CFrame.new(-13.760504722595215, 17.080080032348633, 381.9714660644531)
 window:Notify("Bypassing anticheat - waiting 5 seconds", "info")
 
 -- Spin during wait
@@ -126,7 +235,7 @@ spinConnection = RunService.Heartbeat:Connect(function()
     end
 end)
 
-task.wait(5.5)
+task.wait(5.75)
 
 spinning = false
 if spinConnection then spinConnection:Disconnect() end
@@ -147,7 +256,6 @@ end
 end
 end
 return
-end
 end)
 end
 
@@ -216,7 +324,7 @@ end
 end
 end)
 
-local function clearESP()
+clearESP = function()
 for _, obj in pairs(espObjects) do
 if obj then obj:Destroy() end
 end
@@ -234,7 +342,7 @@ end
 end)
 end
 
-local function createBestESPPet(pet, value)
+createBestESPPet = function(pet, value)
 local root = pet:FindFirstChild("Root") or pet:FindFirstChild("RootPart") or pet:FindFirstChildWhichIsA("BasePart")
 if not root then return end
 
@@ -312,11 +420,19 @@ return tostring(num):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
 end
 
 visualsPage:CreateToggle("Best Pet ESP", false, function(state)
-espEnabled = state
-if not state then
-clearESP()
-end
+    espEnabled = state
+    if state then
+        if not isScanning then
+            task.spawn(function()
+                startScanLoop()
+            end)
+        end
+    else
+        clearESP()
+        isScanning = false
+    end
 end)
+
 
 stealPage:CreateSlider("Min Pet Value", 0, 10000000, minPetValue, function(v)
 minPetValue = v
@@ -330,96 +446,7 @@ stealPage:CreateDropdown("Delivery Mode", {"Direct"}, "Direct", function(v)
 deliveryMode = v
 end)
 
-local function parseTime(timeText)
-if not timeText or type(timeText) ~= "string" then return math.huge end
-local num = tonumber(timeText:match("(%d+)")) or 0
-if timeText:match("h") then num = num * 3600
-elseif timeText:match("m") then num = num * 60
-elseif timeText:match("s") then -- do nothing, already in seconds
-else return math.huge end
-return num
-end
-
-local function getTycoonTimer(tycoonInner)
-local forcefieldFolder = tycoonInner:FindFirstChild("ForcefieldFolder")
-if forcefieldFolder then
-local screen = forcefieldFolder:FindFirstChild("Screen")
-if screen then
-local surfaceGui = screen:FindFirstChild("Screen") and screen.Screen:FindFirstChild("SurfaceGui")
-if surfaceGui then
-local timeLabel = surfaceGui:FindFirstChild("Time")
-if timeLabel and timeLabel:IsA("TextLabel") then
-return parseTime(timeLabel.Text)
-end
-end
-end
-end
-return math.huge
-end
-
-local function findBestPetInTycoon(tycoon)
-local maxValue = -math.huge
-local bestPetInTycoon = nil
-
-local tempFolder = tycoon:FindFirstChild("Temporary")
-if tempFolder then
-for _, pet in ipairs(tempFolder:GetChildren()) do
-if pet:IsA("Model") and pet:FindFirstChild("Root") then
-local unstealable = false
-for _, desc in ipairs(pet:GetDescendants()) do
-if desc:IsA("TextLabel") and desc.Text == "UNSTEALABE" then
-unstealable = true
-break
-end
-end
-if unstealable then continue end
-local infoFolder = pet:FindFirstChild("Information")
-if infoFolder then
-local priceValue = infoFolder:FindFirstChild("Price")
-if priceValue and priceValue:IsA("NumberValue") then
-local value = priceValue.Value
-if value > maxValue and value >= minPetValue then
-maxValue = value
-bestPetInTycoon = pet
-end
-end
-end
-end
-end
-end
-return bestPetInTycoon, maxValue
-end
-
-local function scanForBestAvailablePet()
-local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
-if not tycoonsFolder then
-warn("Tycoons folder not found")
-return nil, 0
-end
-
-local maxValue = -math.huge
-local bestPet = nil
-
-for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
-if tycoon:GetAttribute("Owner") ~= player.Name then
-local tycoonInner = tycoon:FindFirstChild("Tycoon")
-if tycoonInner then
-local timer = getTycoonTimer(tycoonInner)
-if timer <= timerThreshold then
-local bestInTycoon, valueInTycoon = findBestPetInTycoon(tycoon)
-if bestInTycoon and valueInTycoon > maxValue then
-maxValue = valueInTycoon
-bestPet = bestInTycoon
-end
-end
-end
-end
-end
-
-return bestPet, maxValue
-end
-
-local function scanForOverallBestPet()
+scanForOverallBestPet = function()
 local tycoonsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
 if not tycoonsFolder then
 warn("Tycoons folder not found")
@@ -440,23 +467,6 @@ end
 end
 
 return bestPet, maxValue
-end
-
-local function startScanLoop()
-if isScanning then return end
-isScanning = true
-while isScanning do
-local bestAvailable, availableValue = scanForBestAvailablePet()
-bestAvailablePet = bestAvailable
-local bestOverall, overallValue = scanForOverallBestPet()
-bestOverallPet = bestOverall
-if espEnabled and bestOverall and overallValue then
-clearESP()
-createBestESPPet(bestOverall, overallValue)
-end
-task.wait()
-end
-clearESP()
 end
 
 local function autostealLoop()
@@ -559,25 +569,8 @@ if buttons then
 local forceFieldBuy = buttons:FindFirstChild("ForceFieldBuy")
 if forceFieldBuy and forceFieldBuy.PrimaryPart then
 local targetPos = forceFieldBuy.PrimaryPart.Position + Vector3.new(0, 3.2, 0)
-if autoLockMode == "Pathfinding" then
-local path = PathfindingService:CreatePath({
-AgentRadius = 2,
-AgentHeight = 5,
-AgentCanJump = true
-})
-local success, _ = pcall(function()
-path:ComputeAsync(hrp.Position, targetPos)
-end)
-if success and path.Status == Enum.PathStatus.Success then
-local waypoints = path:GetWaypoints()
-for _, waypoint in ipairs(waypoints) do
-humanoid:MoveTo(waypoint.Position)
-if waypoint.Action == Enum.PathWaypointAction.Jump then
-humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-end
-humanoid.MoveToFinished:Wait(2)
-end
-end
+if autoLockMode == "Direct" then
+hrp.CFrame = CFrame.new(targetPos) * hrp.CFrame.Rotation
 elseif autoLockMode == "Lerp" then
 local startPos = hrp.Position
 local distance = (targetPos - startPos).Magnitude
@@ -603,7 +596,7 @@ task.wait()
 end
 end
 
-basePage:CreateDropdown("Auto Lock Mode", {"Lerp", "Pathfinding"}, "Lerp", function(v)
+basePage:CreateDropdown("Auto Lock Mode", {"Lerp", "Direct"}, "Lerp", function(v)
 autoLockMode = v
 end)
 
