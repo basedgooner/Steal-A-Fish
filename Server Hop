@@ -1,0 +1,177 @@
+local GUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/basedgooner/Luno-V2/refs/heads/main/Luno%20V2"))()
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+local window = GUI:CreateWindow("Steal A Fish Hopper - Levi")
+local hopPage = window:CreatePage("Hop")
+
+-- Defaults
+local minHopValue = 10_000
+local selectedLabel = "10K"
+local autoHopEnabled = false
+local autoHopCoroutine = nil
+
+-- Config
+local configFolder = "StealAFishConfig"
+local configFile = configFolder .. "/hop_config.json"
+
+if not isfolder(configFolder) then
+    makefolder(configFolder)
+end
+
+if isfile(configFile) then
+    local success, content = pcall(readfile, configFile)
+    if success then
+        local ok, decoded = pcall(HttpService.JSONDecode, HttpService, content)
+        if ok and type(decoded) == "table" then
+            selectedLabel = decoded.selectedLabel or "10K"
+            minHopValue = decoded.minHopValue or 10_000
+            autoHopEnabled = decoded.autoHopEnabled or false
+        end
+    end
+end
+
+local function saveConfig()
+    local data = {
+        minHopValue = minHopValue,
+        selectedLabel = selectedLabel,
+        autoHopEnabled = autoHopEnabled
+    }
+    local json = HttpService:JSONEncode(data)
+    writefile(configFile, json)
+end
+
+-- Utility
+local function parseTime(timeText)
+    if not timeText or type(timeText) ~= "string" then return math.huge end
+    local num = tonumber(timeText:match("(%d+)")) or 0
+    if timeText:match("h") then num = num * 3600
+    elseif timeText:match("m") then num = num * 60 end
+    return num
+end
+
+local function getTycoonTimer(tycoonInner)
+    local ff = tycoonInner:FindFirstChild("ForcefieldFolder")
+    if ff then
+        local screen = ff:FindFirstChild("Screen")
+        if screen then
+            local gui = screen:FindFirstChild("Screen") and screen.Screen:FindFirstChild("SurfaceGui")
+            if gui then
+                local timeLabel = gui:FindFirstChild("Time")
+                if timeLabel and timeLabel:IsA("TextLabel") then
+                    return parseTime(timeLabel.Text)
+                end
+            end
+        end
+    end
+    return math.huge
+end
+
+local function findBestPetInTycoon(tycoon)
+    local best = nil
+    local maxValue = -math.huge
+    local temp = tycoon:FindFirstChild("Temporary")
+    if temp then
+        for _, pet in ipairs(temp:GetChildren()) do
+            if pet:IsA("Model") and pet:FindFirstChild("Root") then
+                local unstealable = false
+                for _, desc in ipairs(pet:GetDescendants()) do
+                    if desc:IsA("TextLabel") and desc.Text == "UNSTEALABE" then
+                        unstealable = true
+                        break
+                    end
+                end
+                if unstealable then continue end
+                local info = pet:FindFirstChild("Information")
+                local price = info and info:FindFirstChild("Price")
+                if price and price:IsA("NumberValue") then
+                    if price.Value > maxValue then
+                        best = pet
+                        maxValue = price.Value
+                    end
+                end
+            end
+        end
+    end
+    return best, maxValue
+end
+
+local function scanForOverallBestPet()
+    local tycoons = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
+    if not tycoons then warn("No Tycoons folder") return nil, 0 end
+    local best, maxVal = nil, -math.huge
+    for _, tycoon in ipairs(tycoons:GetChildren()) do
+        if tycoon:GetAttribute("Owner") ~= player.Name then
+            local bestPet, val = findBestPetInTycoon(tycoon)
+            if bestPet and val > maxVal then
+                best, maxVal = bestPet, val
+            end
+        end
+    end
+    return best, maxVal
+end
+
+-- Auto Hop Logic
+local function autoHopLoop()
+    while autoHopEnabled do
+        local _, value = scanForOverallBestPet()
+
+        if value < minHopValue then
+            window:Notify("Best pet below threshold, hopping server", "info")
+
+            local aborted = false
+            for i = 1, 30 do -- 3 seconds
+                if not autoHopEnabled then
+                    aborted = true
+                    break
+                end
+                task.wait(0.1)
+            end
+
+            if aborted then
+                window:Notify("Server Hop Aborted", "info")
+            else
+                TeleportService:Teleport(game.PlaceId, player)
+            end
+
+        else
+            window:Notify("Best pet found above threshold: $" .. value, "success")
+        end
+
+        task.wait(10)
+    end
+    autoHopCoroutine = nil
+end
+
+-- Dropdown setup
+local valueOptions = {
+    ["10K"] = 10_000, ["100K"] = 100_000,
+    ["1M"] = 1_000_000, ["10M"] = 10_000_000, ["100M"] = 100_000_000,
+    ["1B"] = 1_000_000_000, ["10B"] = 10_000_000_000, ["100B"] = 100_000_000_000,
+    ["1T"] = 1_000_000_000_000, ["50T"] = 50
+}
+local valueLabels = {}
+for label in pairs(valueOptions) do table.insert(valueLabels, label) end
+table.sort(valueLabels, function(a, b) return valueOptions[a] < valueOptions[b] end)
+
+-- UI Setup
+hopPage:CreateDropdown("Min Hop Value", valueLabels, selectedLabel, function(choice)
+    selectedLabel = choice
+    minHopValue = valueOptions[choice] or 0
+    saveConfig()
+end)
+
+hopPage:CreateToggle("Auto Hop", autoHopEnabled, function(state)
+    autoHopEnabled = state
+    saveConfig()
+    if state and not autoHopCoroutine then
+        autoHopCoroutine = task.spawn(autoHopLoop)
+    end
+end)
+
+-- Start loop if enabled from config
+if autoHopEnabled and not autoHopCoroutine then
+    autoHopCoroutine = task.spawn(autoHopLoop)
+end
