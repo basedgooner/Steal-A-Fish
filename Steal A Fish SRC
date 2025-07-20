@@ -12,6 +12,7 @@ local stealPage = window:CreatePage("Steal")
 local movementPage = window:CreatePage("Movement")
 local visualsPage = window:CreatePage("Visuals")
 local basePage = window:CreatePage("Base")
+local autoBuyPage = window:CreatePage("Buy (Beta)")
 
 local walkSpeed = 40
 local speedEnabled = false
@@ -40,6 +41,10 @@ end
 end
 local blackFrame = nil
 local deliveryMode = "Direct"
+local selectedClasses = {"Salmon"} -- Initial selection as a table
+local autobuyEnabled = false
+local autobuyCoroutine = nil
+local ignored = setmetatable({}, {__mode = "k"}) -- Weak keys for models
 
 -- Steal remote
 local voidSky = ReplicatedStorage:WaitForChild("voidSky")
@@ -48,6 +53,7 @@ local serverRemotes = remotes:WaitForChild("Server")
 local objectsRemotes = serverRemotes:WaitForChild("Objects")
 local trashRemotes = objectsRemotes:WaitForChild("Trash")
 local stealRemote = trashRemotes:WaitForChild("Steal")
+local collectRemote = voidSky.Remotes.Server.Objects.Trash.Collect
 
 
 local function parseTime(timeText)
@@ -617,4 +623,68 @@ autoLockCoroutine = task.spawn(autoLockLoop)
 else
 if autoLockCoroutine then task.cancel(autoLockCoroutine) autoLockCoroutine = nil end
 end
+end)
+
+local function autobuyLoop()
+    while autobuyEnabled do
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            task.wait(0.1)
+            continue
+        end
+
+        local objectsFolder = workspace:FindFirstChild("RayFiltered")
+            and workspace.RayFiltered:FindFirstChild("Objects")
+        if not objectsFolder then
+            task.wait(0.1)
+            continue
+        end
+
+        for _, model in ipairs(objectsFolder:GetChildren()) do
+            if not autobuyEnabled then break end
+
+            if model:IsA("Model") and table.find(selectedClasses, model:GetAttribute("Class")) and not ignored[model] then
+                local root = model:FindFirstChild("Root") or model:FindFirstChild("RootPart") or model:FindFirstChildWhichIsA("BasePart")
+                if root and root.Size.X > 0 and root.Size.Y > 0 and root.Size.Z > 0 then
+                    local initialCFrame = root.CFrame
+                    hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
+                    collectRemote:FireServer(model.Name)
+
+                    task.spawn(function()
+                        task.wait(2)
+                        if model and model.Parent and root and root.CFrame == initialCFrame then
+                            ignored[model] = true
+                        end
+                    end)
+
+                    task.wait(0.5) -- Slow down between transactions
+                end
+            end
+        end
+
+        task.wait(0.1) -- Buffer between scans
+    end
+end
+
+autoBuyPage:CreateDropdown("Select Fish", {
+    "Salmon", "Tralalero", "Tung Sahur", "Boneca Ambalabu", "Skeleton Fish",
+    "Turtle", "Crab", "Blobfish", "Clownfish", "Saw Shark", "Nuke Fish",
+    "Megalodon", "Whale", "Bananini", "Gold Fish", "Manta Ray", "Loch Ness",
+    "Kraken", "Infected Whale", "Robolodon", "Axolotl", "Sea Eater", "Bloop",
+    "Bloopvoid", "Mouth Titan", "World Eater", "Leviathan", "Skeleton Bloop",
+    "Skeleton Eater", "El Skeleton Maja", "Spiderfish", "Hungry Tung", "The Moon",
+    "SCP", "Udindun Eater", "Train Eater", "Shark"
+}, "Salmon", function(newSelection)
+    selectedClasses = newSelection
+end, "multi")
+
+autoBuyPage:CreateToggle("Auto Buy", false, function(state)
+    autobuyEnabled = state
+    if state and not autobuyCoroutine then
+        autobuyCoroutine = task.spawn(autobuyLoop)
+    elseif not state and autobuyCoroutine then
+        task.cancel(autobuyCoroutine)
+        autobuyCoroutine = nil
+    end
 end)
