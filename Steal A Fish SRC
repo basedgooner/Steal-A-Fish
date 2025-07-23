@@ -1,4 +1,4 @@
---SCRIPT F
+--SRC
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,7 +9,7 @@ local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local Window = Rayfield:CreateWindow({
-   Name = "Steal A Fish - Levi",
+   Name = "🐟 Steal A Fish - Levi",
    LoadingTitle = "Steal A Fish",
    LoadingSubtitle = "by Levi",
    ConfigurationSaving = {Enabled = false},
@@ -21,15 +21,7 @@ local movementTab = Window:CreateTab("Movement")
 local baseTab = Window:CreateTab("Base")
 local autoBuyTab = Window:CreateTab("Fish")
 local miscTab = Window:CreateTab("Misc") -- Added Misc tab from Script 2
-local ShopWindow = Rayfield:CreateWindow({
-    Name = "🐟 Steal A Fish - Levi",
-    LoadingTitle = "Loading Steal A Fish Script",
-    LoadingSubtitle = "by Levi",
-    ConfigurationSaving = {Enabled = false},
-    KeySystem = false,
-    Theme = "Professional",
-})
-local shopTab = ShopWindow:CreateTab("Shop")
+local shopTab = Window:CreateTab("Shop")
 
 -- Variables from Script 1
 local walkSpeed = 40
