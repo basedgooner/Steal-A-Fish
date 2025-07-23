@@ -7,28 +7,38 @@ local player = Players.LocalPlayer
 local window = GUI:CreateWindow("Steal A Fish Hopper - Levi")
 local hopPage = window:CreatePage("Hop")
 
--- Defaults
+-- Config Setup
+local configFolder = "StealAFishConfig"
+local configFile = configFolder .. "/hop_config.json"
+local visitedServersFile = configFolder .. "/visited_servers.json"
+
+if not isfolder(configFolder) then makefolder(configFolder) end
+
 local minHopValue = 10_000
 local selectedLabel = "10K"
 local autoHopEnabled = false
-local autoHopCoroutine = nil
+local visitedServers = {}
 
--- Config
-local configFolder = "StealAFishConfig"
-local configFile = configFolder .. "/hop_config.json"
-
-if not isfolder(configFolder) then
-    makefolder(configFolder)
-end
-
+-- Load previous config
 if isfile(configFile) then
     local success, content = pcall(readfile, configFile)
     if success then
         local ok, decoded = pcall(HttpService.JSONDecode, HttpService, content)
-        if ok and type(decoded) == "table" then
+        if ok and typeof(decoded) == "table" then
             selectedLabel = decoded.selectedLabel or "10K"
             minHopValue = decoded.minHopValue or 10_000
             autoHopEnabled = decoded.autoHopEnabled or false
+        end
+    end
+end
+
+-- Load visited servers
+if isfile(visitedServersFile) then
+    local ok, data = pcall(readfile, visitedServersFile)
+    if ok then
+        local parsed = pcall(function() return HttpService:JSONDecode(data) end)
+        if typeof(parsed) == "table" then
+            visitedServers = parsed
         end
     end
 end
@@ -39,16 +49,20 @@ local function saveConfig()
         selectedLabel = selectedLabel,
         autoHopEnabled = autoHopEnabled
     }
-    local json = HttpService:JSONEncode(data)
-    writefile(configFile, json)
+    writefile(configFile, HttpService:JSONEncode(data))
 end
 
--- Utility
+local function saveVisitedServer(id)
+    visitedServers[id] = true
+    writefile(visitedServersFile, HttpService:JSONEncode(visitedServers))
+end
+
+-- Helper functions
 local function parseTime(timeText)
     if not timeText or type(timeText) ~= "string" then return math.huge end
     local num = tonumber(timeText:match("(%d+)")) or 0
-    if timeText:match("h") then num = num * 3600
-    elseif timeText:match("m") then num = num * 60 end
+    if timeText:match("h") then num *= 3600
+    elseif timeText:match("m") then num *= 60 end
     return num
 end
 
@@ -70,8 +84,7 @@ local function getTycoonTimer(tycoonInner)
 end
 
 local function findBestPetInTycoon(tycoon)
-    local best = nil
-    local maxValue = -math.huge
+    local best, maxValue = nil, -math.huge
     local temp = tycoon:FindFirstChild("Temporary")
     if temp then
         for _, pet in ipairs(temp:GetChildren()) do
@@ -86,11 +99,8 @@ local function findBestPetInTycoon(tycoon)
                 if unstealable then continue end
                 local info = pet:FindFirstChild("Information")
                 local price = info and info:FindFirstChild("Price")
-                if price and price:IsA("NumberValue") then
-                    if price.Value > maxValue then
-                        best = pet
-                        maxValue = price.Value
-                    end
+                if price and price:IsA("NumberValue") and price.Value > maxValue then
+                    best, maxValue = pet, price.Value
                 end
             end
         end
@@ -100,7 +110,7 @@ end
 
 local function scanForOverallBestPet()
     local tycoons = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Tycoons")
-    if not tycoons then warn("No Tycoons folder") return nil, 0 end
+    if not tycoons then return nil, 0 end
     local best, maxVal = nil, -math.huge
     for _, tycoon in ipairs(tycoons:GetChildren()) do
         if tycoon:GetAttribute("Owner") ~= player.Name then
@@ -113,7 +123,8 @@ local function scanForOverallBestPet()
     return best, maxVal
 end
 
--- Auto Hop Logic
+-- Auto Hop Loop
+local autoHopCoroutine = nil
 local function autoHopLoop()
     while autoHopEnabled do
         local _, value = scanForOverallBestPet()
@@ -122,20 +133,33 @@ local function autoHopLoop()
             window:Notify("Best pet below threshold, hopping server", "info")
 
             local aborted = false
-            for i = 1, 30 do -- 3 seconds
-                if not autoHopEnabled then
-                    aborted = true
-                    break
-                end
+            for _ = 1, 30 do
+                if not autoHopEnabled then aborted = true break end
                 task.wait(0.1)
             end
 
             if aborted then
                 window:Notify("Server Hop Aborted", "info")
             else
+                saveVisitedServer(game.JobId)
+
+                local serversAPI = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+                local success, response = pcall(function() return game:HttpGet(serversAPI) end)
+
+                if success then
+                    local data = HttpService:JSONDecode(response)
+                    for _, server in ipairs(data.data) do
+                        if server.playing < server.maxPlayers and not visitedServers[server.id] then
+                            saveVisitedServer(server.id)
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+                            return
+                        end
+                    end
+                end
+
+                -- fallback
                 TeleportService:Teleport(game.PlaceId, player)
             end
-
         else
             window:Notify("Best pet found above threshold: $" .. value, "success")
         end
@@ -145,7 +169,7 @@ local function autoHopLoop()
     autoHopCoroutine = nil
 end
 
--- Dropdown setup
+-- UI
 local valueOptions = {
     ["10K"] = 10_000, ["100K"] = 100_000,
     ["1M"] = 1_000_000, ["10M"] = 10_000_000, ["100M"] = 100_000_000,
@@ -156,7 +180,6 @@ local valueLabels = {}
 for label in pairs(valueOptions) do table.insert(valueLabels, label) end
 table.sort(valueLabels, function(a, b) return valueOptions[a] < valueOptions[b] end)
 
--- UI Setup
 hopPage:CreateDropdown("Min Hop Value", valueLabels, selectedLabel, function(choice)
     selectedLabel = choice
     minHopValue = valueOptions[choice] or 0
@@ -171,7 +194,6 @@ hopPage:CreateToggle("Auto Hop", autoHopEnabled, function(state)
     end
 end)
 
--- Start loop if enabled from config
 if autoHopEnabled and not autoHopCoroutine then
     autoHopCoroutine = task.spawn(autoHopLoop)
 end
