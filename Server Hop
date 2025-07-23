@@ -14,7 +14,7 @@ local visitedServersFile = configFolder .. "/visited_servers.json"
 
 if not isfolder(configFolder) then makefolder(configFolder) end
 
-local minHopValue = 10_000
+local minHopValue = 10000
 local selectedLabel = "10K"
 local autoHopEnabled = false
 local visitedServers = {}
