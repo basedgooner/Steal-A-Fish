@@ -8,22 +8,21 @@ local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local Window = Rayfield:CreateWindow({
-   Name = "🐟 Steal A Fish - Levi",
-   LoadingTitle = "Steal A Fish",
-   LoadingSubtitle = "by Levi",
-   ConfigurationSaving = {Enabled = false},
-   KeySystem = false,
-   Theme = "Professional",
+    Name = "🐟 Steal A Fish - Levi",
+    LoadingTitle = "Steal A Fish",
+    LoadingSubtitle = "by Levi",
+    ConfigurationSaving = {Enabled = false},
+    KeySystem = false,
+    Theme = "Professional",
 })
 local stealTab = Window:CreateTab("Steal")
 local movementTab = Window:CreateTab("Movement")
 local visualsTab = Window:CreateTab("Visuals")
 local baseTab = Window:CreateTab("Base")
 local autoBuyTab = Window:CreateTab("Fish")
-local miscTab = Window:CreateTab("Misc") -- Added Misc tab from Script 2
+local miscTab = Window:CreateTab("Misc")
 local shopTab = Window:CreateTab("Shop")
 
--- Variables from Script 1
 local walkSpeed = 40
 local flySpeed = 40
 local speedEnabled = false
@@ -42,7 +41,7 @@ local tweenSpeed = 50
 local autoLockEnabled = false
 local autoLockCoroutine = nil
 local autoLockMode = "Direct"
-local allowedUserIds = {} -- add your user ids here
+local allowedUserIds = {}
 local isAllowed = false
 for _, id in ipairs(allowedUserIds) do
     if player.UserId == id then
@@ -52,11 +51,11 @@ for _, id in ipairs(allowedUserIds) do
 end
 local blackFrame = nil
 local deliveryMode = "Direct"
-local selectedClasses = {"Salmon"} -- Initial selection as a table
+local selectedClasses = {"Salmon"}
 local autobuyEnabled = false
 local autobuyCoroutine = nil
-local ignored = setmetatable({}, {__mode = "k"}) -- Weak keys for models
-local last_buyers = {} -- uuid -> buyer Player
+local ignored = setmetatable({}, {__mode = "k"})
+local last_buyers = {}
 local autoSellEnabled = false
 local autoSellCoroutine = nil
 local autoCollectEnabled = false
@@ -82,12 +81,12 @@ local espScanCoroutine = nil
 local autobuyHighlights = {}
 local autobuyChildAddedConn = nil
 local autobuyChildRemovedConn = nil
-local playerESPEnabled = false
-local playerESPObjects = {}
+local playerEspEnabled = false
+local playerEspObjects = {}
 local playerESPPlayerAddedConn = nil
 local playerESPPlayerRemovingConn = nil
+local scriptInitiatedSteal = false
 
--- Variables from Script 2
 local BuyButton = ReplicatedStorage:WaitForChild('voidSky').Remotes.Server.Objects:WaitForChild('BuyButton')
 local x2Spawn = workspace.Map.Stand:WaitForChild('x2 Spawn')
 local x2ConveyorSpeed = workspace.Map.Stand:WaitForChild('x2 Conveyor Speed')
@@ -101,14 +100,13 @@ local buyConveyorSpeedEnabled = false
 local buyConveyorSpeedCoroutine = nil
 local processingLock = false
 local aimbotEnabled = false
-local aimbotPredictionMode = "None" -- Default mode
-local targetMode = "Closest To Mouse" -- Default mode
+local aimbotPredictionMode = "None"
+local targetMode = "Closest To Mouse"
 local currentHighlight = nil
 local currentTargetPlayer = nil
 local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 local PlayerReplication = require(ReplicatedStorage.voidSky.Modules.HitboxClient:WaitForChild("PlayerReplication"))
 
--- Steal remote from Script 1
 local voidSky = ReplicatedStorage:WaitForChild("voidSky")
 local remotes = voidSky:WaitForChild("Remotes")
 local serverRemotes = remotes:WaitForChild("Server")
@@ -121,7 +119,6 @@ local PurchaseProductCash = ReplicatedStorage.voidSky.Remotes.Server.Important:W
 
 local TweenOwned = ReplicatedStorage.voidSky.Remotes.Client.Objects.Trash.TweenOwned
 
--- Functions from Script 2
 local function getTarget()
     local best = nil
     local shortest = math.huge
@@ -129,51 +126,33 @@ local function getTarget()
     local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
     if not localHrp then return nil end
 
-    local mousePos = Vector2.new(0, 0)
-    if targetMode == "Closest To Mouse" then
-        local userInput = game:GetService("UserInputService")
-        local input = userInput:GetMouseLocation()
-        mousePos = Vector2.new(input.X, input.Y)
-    end
+    local mousePos = UserInputService:GetMouseLocation()
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= player and plr.Character then
             local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
             local hum = plr.Character:FindFirstChildOfClass("Humanoid")
             if hrp and hum and hum.Health > 0 then
-                local pos = hrp.Position
-                if aimbotPredictionMode == "Linear" then
-                    pos += hrp.Velocity * 0.15
-                elseif aimbotPredictionMode == "Dynamic" then
-                    local dist = (localHrp.Position - pos).Magnitude
-                    local proj_speed = 100 -- Assumed projectile speed; adjust if needed
-                    local time_to_hit = dist / proj_speed
-                    pos += hrp.Velocity * time_to_hit
-                end
-
-                local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(pos)
+                local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(hrp.Position)
                 if onScreen then
-                    local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    local dist3d = (localHrp.Position - pos).Magnitude
-
+                    local dist
                     if targetMode == "Closest To Mouse" then
-                        if screenDist < shortest then
-                            shortest = screenDist
-                            best = plr
-                        end
-                    elseif targetMode == "Nearest By Distance" then
-                        if dist3d < shortest then
-                            shortest = dist3d
-                            best = plr
-                        end
+                        dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    else 
+                        dist = (localHrp.Position - hrp.Position).Magnitude
+                    end
+
+                    if dist < shortest then
+                        shortest = dist
+                        best = plr
                     end
                 end
             end
         end
     end
-
     return best
 end
+
 
 local function updateHighlight(targetChar)
     if not currentHighlight then
@@ -190,9 +169,22 @@ local function updateHighlight(targetChar)
         currentHighlight.Adornee = targetChar
     end
 
+    local isEspTarget = false
+    if currentTargetPlayer and playerEspObjects[currentTargetPlayer] then
+        isEspTarget = true
+    end
+
+    local fillTrans = 0.25
+    local outTrans = 0
+
+    if isEspTarget then
+        fillTrans = 0.75 
+        outTrans = 0 
+    end
+
     TweenService:Create(currentHighlight, tweenInfo, {
-        FillTransparency = 0.25,
-        OutlineTransparency = 0,
+        FillTransparency = fillTrans,
+        OutlineTransparency = outTrans,
     }):Play()
 end
 
@@ -218,23 +210,29 @@ if PlayerReplication and typeof(PlayerReplication) == "table" and PlayerReplicat
 
         local target = getTarget()
         if target and target.Character then
-            updateHighlight(target.Character)
-            currentTargetPlayer = target
+    currentTargetPlayer = target
+    updateHighlight(target.Character)
 
-            local hrp = target.Character.HumanoidRootPart
-            local pos = hrp.Position
+    local hrp = target.Character:FindFirstChild("HumanoidRootPart")
+    local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp or not myHrp then return end
 
-            if aimbotPredictionMode == "Linear" then
-                pos += hrp.Velocity * 0.15
-            elseif aimbotPredictionMode == "Dynamic" then
-                local dist = (localHrp.Position - pos).Magnitude
-                local proj_speed = 100
-                local time_to_hit = dist / proj_speed
-                pos += hrp.Velocity * time_to_hit
-            end
+    local pos = hrp.Position
+    local dist3d = (myHrp.Position - pos).Magnitude
 
-            return pos
-        else
+    local bulletSpeed = 150 -- adjust this as needed
+
+    if aimbotPredictionMode == "Linear" then
+        pos = pos + (hrp.Velocity * (dist3d / bulletSpeed))
+
+    elseif aimbotPredictionMode == "Ping Linear" then
+        local ping = (game.Stats.Network.ServerStatsItem["Data Ping"]:GetValue() or 0) / 1000
+        local timeToTarget = dist3d / bulletSpeed
+        pos = pos + (hrp.Velocity * (timeToTarget + (ping / 2)))
+    end
+
+    return pos
+else
             hideHighlight()
             return originalGetMousePosition(...)
         end
@@ -243,7 +241,6 @@ else
     warn("[Aimbot] PlayerReplication or GetMousePosition is nil. Skipping override.")
 end
 
--- Functions from Script 1
 TweenOwned.OnClientEvent:Connect(function(buyer, fishName, uuid, cf, tweenTime, success, tweening)
     if success and buyer then
         last_buyers[uuid] = buyer
@@ -255,7 +252,7 @@ local function parseTime(timeText)
     local num = tonumber(timeText:match("(%d+)")) or 0
     if timeText:match("h") then num = num * 3600
     elseif timeText:match("m") then num = num * 60
-    elseif timeText:match("s") then -- do nothing, already in seconds
+    elseif timeText:match("s") then
     else return math.huge end
     return num
 end
@@ -355,7 +352,6 @@ local function scanForOverallBestPet()
     return bestPet, maxValue
 end
 
--- Hook steal detection
 if stealRemote and stealRemote:IsA("RemoteEvent") then
     local mt = getrawmetatable(stealRemote)
     setreadonly(mt, false)
@@ -366,10 +362,14 @@ if stealRemote and stealRemote:IsA("RemoteEvent") then
     setreadonly(mt, true)
 end
 
--- Delivery handling
 local function setupDelivery(char)
     char.ChildAdded:Connect(function(child)
         if child.Name == "StolenObject" then
+            if not scriptInitiatedSteal then
+                return
+            end
+            scriptInitiatedSteal = false
+
             local humanoid = char:FindFirstChildOfClass("Humanoid")
             local originalWalkSpeed = 0
             local originalJumpPower = 0
@@ -422,7 +422,6 @@ local function setupDelivery(char)
                                             Content = "Bypassing anticheat - waiting 6 seconds",
                                             Duration = 5,
                                         })
-                                        -- Spin during wait
                                         local spinning = true
                                         local spinConnection
                                         spinConnection = RunService.Heartbeat:Connect(function()
@@ -433,7 +432,6 @@ local function setupDelivery(char)
                                         task.wait(6.25)
                                         spinning = false
                                         if spinConnection then spinConnection:Disconnect() end
-                                        -- TP directly to collectzone
                                         hrp.CFrame = CFrame.new(collectPart.Position + Vector3.new(0, 3, 0)) * hrp.CFrame.Rotation
                                     end
                                     if humanoid then
@@ -534,9 +532,13 @@ movementTab:CreateToggle({
             local bodyVelocity = Instance.new("BodyVelocity")
             bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
             bodyVelocity.P = 9e4
+            bodyVelocity.Velocity = Vector3.new(0,0,0)
             bodyVelocity.Parent = hrp
             RunService:BindToRenderStep("Fly", Enum.RenderPriority.Character.Value, function()
-                if not flyEnabled then return end
+                if not flyEnabled or not bodyGyro or not bodyVelocity or not bodyGyro.Parent or not bodyVelocity.Parent then 
+                    RunService:UnbindFromRenderStep("Fly")
+                    return 
+                end
                 local cam = workspace.CurrentCamera
                 bodyGyro.CFrame = cam.CFrame
                 local move = Vector3.new()
@@ -546,11 +548,12 @@ movementTab:CreateToggle({
                 if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cam.CFrame.RightVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0, 1, 0) end
+                
+                local targetVelocity = Vector3.new(0,0,0)
                 if move.Magnitude > 0 then
-                    bodyVelocity.Velocity = move.Unit * flySpeed
-                else
-                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    targetVelocity = move.Unit * flySpeed
                 end
+                bodyVelocity.Velocity = bodyVelocity.Velocity:Lerp(targetVelocity, 0.1)
             end)
         else
             RunService:UnbindFromRenderStep("Fly")
@@ -612,7 +615,7 @@ local function createBestESPPet(pet, value)
     gui.Adornee = root
     gui.AlwaysOnTop = true
     gui.Size = UDim2.new(0, 400, 0, 80)
-    gui.StudsOffset = Vector3.new(0, 6.5, 0)
+    gui.StudsOffset = Vector3.new(0, 8, 0)
     gui.Parent = pet
     local n = Instance.new('TextLabel')
     n.Size = UDim2.new(1, 0, 0.5, 0)
@@ -740,7 +743,7 @@ end
 
 local function autoSellLoop()
     while autoSellEnabled do
-        if not autoSellEnabled then break end -- Exit immediately if toggle is off
+        if not autoSellEnabled then break end
         task.wait(0.05)
         local char = player.Character
         if char and char:FindFirstChild("StolenObject") then
@@ -748,7 +751,7 @@ local function autoSellLoop()
         end
         local pets = getPetsInOwnTycoon(minSellValue, false)
         for _, pet in ipairs(pets) do
-            if not autoSellEnabled then break end -- Check toggle state in inner loop
+            if not autoSellEnabled then break end
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -771,7 +774,7 @@ local function autoSellLoop()
                     end
                 end
             end
-            task.wait(0.1) -- Add small delay to prevent rapid firing
+            task.wait(0.1)
         end
     end
 end
@@ -797,7 +800,7 @@ local function getMaxCollectSlots()
     elseif rebValue == 10 then
         return 20
     else
-        return 10  -- default for unspecified
+        return 10
     end
 end
 
@@ -827,9 +830,9 @@ local function autoCollectLoop()
                     Type = "error"
                 })
             end
-            task.wait(0.25) -- Delay between each remote call
+            task.wait(0.25)
         end
-        task.wait(0.15) -- Buffer between full slot cycles
+        task.wait(0.15)
     end
 end
 
@@ -901,73 +904,26 @@ visualsTab:CreateToggle({
     end,
 })
 
-local function createPlayerESP(plr)
-    if plr == player or not plr.Character then return end
-    local char = plr.Character
-    local hl = Instance.new("Highlight")
-    hl.FillColor = Color3.new(0, 0, 1)
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.25
-    hl.OutlineTransparency = 0
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = char
-    table.insert(playerESPObjects, hl)
-    local head = char:FindFirstChild("Head")
-    if head then
-        local bb = Instance.new("BillboardGui")
-        bb.Adornee = head
-        bb.Size = UDim2.new(0, 200, 0, 50)
-        bb.StudsOffset = Vector3.new(0, 3, 0)
-        bb.AlwaysOnTop = true
-        bb.Parent = char
-        local txt1 = Instance.new("TextLabel")
-        txt1.Size = UDim2.new(1, 0, 0.5, 0)
-        txt1.Text = plr.DisplayName
-        txt1.BackgroundTransparency = 1
-        txt1.TextColor3 = Color3.new(1, 1, 1)
-        txt1.Font = Enum.Font.SourceSansBold
-        txt1.TextSize = 20
-        txt1.Parent = bb
-        local txt2 = Instance.new("TextLabel")
-        txt2.Size = UDim2.new(1, 0, 0.5, 0)
-        txt2.Position = UDim2.new(0, 0, 0.5, 0)
-        txt2.Text = "@" .. plr.Name
-        txt2.BackgroundTransparency = 1
-        txt2.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-        txt2.Font = Enum.Font.SourceSans
-        txt2.TextSize = 16
-        txt2.Parent = bb
-        table.insert(playerESPObjects, bb)
-    end
-end
-
-local function removePlayerESP(plr)
-    -- Since objects are in table, but to remove specific, but since toggle off clears all, for now ok.
-end
-
 visualsTab:CreateToggle({
     Name = "Player ESP",
     CurrentValue = false,
     Callback = function(state)
-        playerESPEnabled = state
-        if state then
-            for _, plr in ipairs(Players:GetPlayers()) do
-                createPlayerESP(plr)
+        playerEspEnabled = state
+        if not state then
+            for p, obj in pairs(playerEspObjects) do
+                if obj.highlight then obj.highlight:Destroy() end
+                if obj.gui then obj.gui:Destroy() end
             end
-            playerESPPlayerAddedConn = Players.PlayerAdded:Connect(function(plr)
-                createPlayerESP(plr)
-            end)
-            playerESPPlayerRemovingConn = Players.PlayerRemoving:Connect(function(plr)
-                removePlayerESP(plr)
-            end)
-        else
-            for _, obj in ipairs(playerESPObjects) do
-                if obj then obj:Destroy() end
-            end
-            playerESPObjects = {}
-            if playerESPPlayerAddedConn then playerESPPlayerAddedConn:Disconnect() end
-            if playerESPPlayerRemovingConn then playerESPPlayerRemovingConn:Disconnect() end
+            playerEspObjects = {}
         end
+    end,
+})
+
+baseTab:CreateToggle({
+    Name = "Auto Lock",
+    CurrentValue = false,
+    Callback = function(state)
+        autoLockEnabled = state
     end,
 })
 
@@ -978,14 +934,6 @@ baseTab:CreateDropdown({
     MultipleOptions = false,
     Callback = function(v)
         autoLockMode = v[1]
-    end,
-})
-
-baseTab:CreateToggle({
-    Name = "Auto Lock",
-    CurrentValue = false,
-    Callback = function(state)
-        autoLockEnabled = state
     end,
 })
 
@@ -1002,16 +950,6 @@ baseTab:CreateToggle({
     end,
 })
 
-baseTab:CreateDropdown({
-    Name = "Min Sell Value",
-    Options = {"0", "10K", "100K", "1M", "10M", "100M", "1B", "10B", "100B", "500B", "1T", "50T"},
-    CurrentOption = {"0"},
-    MultipleOptions = false,
-    Callback = function(v)
-        minSellValue = valueMap[v[1]]
-    end,
-})
-
 baseTab:CreateToggle({
     Name = "Auto Sell",
     CurrentValue = false,
@@ -1025,29 +963,28 @@ baseTab:CreateToggle({
     end,
 })
 
--- Updated autobuy dropdown in autoBuyTab
+baseTab:CreateDropdown({
+    Name = "Min Sell Value",
+    Options = {"0", "10K", "100K", "1M", "10M", "100M", "1B", "10B", "100B", "500B", "1T", "50T"},
+    CurrentOption = {"0"},
+    MultipleOptions = false,
+    Callback = function(v)
+        minSellValue = valueMap[v[1]]
+    end,
+})
+
 autoBuyTab:CreateDropdown({
     Name = "Select Fish",
     Options = {
-        -- Common
         "Jellyfish", "Pufferfish", "Salmon", "Sea Horse", "Sea Star", "Tralalero", "Tung Sahur", "Turtle",
-        -- Uncommon
         "Baddie Fish", "Bananini", "Blue Tang", "Boneca Ambalabu", "Chrimp", "Clownfish", "Crab", "Eel", "Swordfish",
-        -- Rare
         "Anglerfish", "Barracuda", "Blobfish", "Brr Patapim", "Octopus", "Piranha", "Tralelelo Junior", "Trulimero Trulichina",
-        -- Epic
         "Axolotl", "Eye Fish", "Gold Fish", "Hammer Shark", "Mermaid", "Saw Shark", "Shark", "Skeleton Fish", "The Waken",
-        -- Mythic
         "Blue Dragon", "Creepy Fish", "Godzilla", "Kraken", "Loch Ness", "Monster", "Nightmare Shark", "Robolodon", "Train Eater", "Zombie Worm",
-        -- Legendary
         "Capuchina Fish", "Long Skeleton", "Manta Ray", "Megalodon", "Nuke Fish", "Whale", "Worm",
-        -- Cosmic
         "Bloop", "Bloopvoid", "El Gran Maja", "El Skeleton Maja", "Future Monster", "Infected Whale", "Octobloop", "Paranormaly", "Sea Eater", "Skeleton Bloop", "Skeleton Eater",
-        -- Deep
         "Deep Mutated Boss", "Leviathan", "Mouth Titan", "Mutated El Gran Maja", "Nightmare Eater", "Nightmare Maja", "SCP", "World Eater",
-        -- Secret
         "Hungry Deer", "Hungry Tung", "Nightmare Blobfish", "Orcalelo Orcala", "Spiderfish", "The Moon",
-        -- Limited
         "Demogorgon Worm", "Evil Bloop", "Infected Sky"
     },
     CurrentOption = nil,
@@ -1118,7 +1055,6 @@ autoBuyTab:CreateToggle({
     end,
 })
 
--- Toggles from Script 2 (added to Misc tab)
 miscTab:CreateToggle({
     Name = 'Aimbot (All Tools)',
     CurrentValue = false,
@@ -1139,7 +1075,7 @@ miscTab:CreateDropdown({
 
 miscTab:CreateDropdown({
     Name = "Aimbot Prediction",
-    Options = {"None", "Linear", "Dynamic"},
+    Options = {"None", "Linear", "Ping Linear"},
     CurrentOption = {"None"},
     MultipleOptions = false,
     Callback = function(option)
@@ -1164,16 +1100,8 @@ miscTab:CreateToggle({
 })
 
 local itemsToBuy = {
-    "Silver Slap",
-    "Flintlock",
-    "Golden Slap",
-    "Blunderbuss",
-    "Diamond Slap",
-    "Freeze Gun",
-    "Ice Slap",
-    "Taser",
-    "Invisible Cape",
-    "Void Slap"
+    "Silver Slap", "Flintlock", "Golden Slap", "Blunderbuss", "Diamond Slap",
+    "Freeze Gun", "Ice Slap", "Taser", "Invisible Cape", "Void Slap"
 }
 
 local function hasGear(name)
@@ -1206,17 +1134,9 @@ shopTab:CreateToggle({
                 end
             end
             if #bought > 0 then
-                Rayfield:Notify({
-                    Title = "Purchased",
-                    Content = "Bought: " .. table.concat(bought, ", "),
-                    Duration = 5
-                })
+                Rayfield:Notify({ Title = "Purchased", Content = "Bought: " .. table.concat(bought, ", "), Duration = 5 })
             else
-                Rayfield:Notify({
-                    Title = "No Purchases",
-                    Content = "You already own all items.",
-                    Duration = 4
-                })
+                Rayfield:Notify({ Title = "No Purchases", Content = "You already own all items.", Duration = 4 })
             end
         end
     end
@@ -1227,30 +1147,16 @@ for _, itemName in ipairs(itemsToBuy) do
         Name = itemName,
         Callback = function()
             if hasGear(itemName) then
-                Rayfield:Notify({
-                    Title = "Already Owned",
-                    Content = "You already have: " .. itemName,
-                    Duration = 4,
-                    Type = "error"
-                })
+                Rayfield:Notify({ Title = "Already Owned", Content = "You already have: " .. itemName, Duration = 4, Type = "error" })
                 return
             end
             local success, err = pcall(function()
                 PurchaseProductCash:InvokeServer(itemName)
             end)
             if success then
-                Rayfield:Notify({
-                    Title = "Purchased",
-                    Content = "Bought: " .. itemName,
-                    Duration = 4
-                })
+                Rayfield:Notify({ Title = "Purchased", Content = "Bought: " .. itemName, Duration = 4 })
             else
-                Rayfield:Notify({
-                    Title = "Error",
-                    Content = "Failed to buy: " .. itemName,
-                    Duration = 4,
-                    Type = "error"
-                })
+                Rayfield:Notify({ Title = "Error", Content = "Failed to buy: " .. itemName, Duration = 4, Type = "error" })
             end
         end
     })
@@ -1262,30 +1168,20 @@ local isPausingAutosteal = false
 local function masterLoop()
     while true do
         local acted = false
-        -- Number one priority: StolenObject in character
         local char = player.Character
         if char and char:FindFirstChild("StolenObject") then
             if not isStallingForSteal then
-                Rayfield:Notify({
-                    Title = "Priority Stall",
-                    Content = "Number one priority: Delivering stolen object. Stalling other actions.",
-                    Duration = 5,
-                })
+                Rayfield:Notify({ Title = "Priority Stall", Content = "Number one priority: Delivering stolen object. Stalling other actions.", Duration = 5 })
                 isStallingForSteal = true
             end
             task.wait(0.1)
             continue
         else
             if isStallingForSteal then
-                Rayfield:Notify({
-                    Title = "Resuming",
-                    Content = "Steal complete. Resuming other priorities.",
-                    Duration = 5,
-                })
+                Rayfield:Notify({ Title = "Resuming", Content = "Steal complete. Resuming other priorities.", Duration = 5 })
                 isStallingForSteal = false
             end
         end
-        -- Priority 1: Auto Lock
         if autoLockEnabled then
             local char = player.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -1320,11 +1216,7 @@ local function masterLoop()
                 end
             end
         end
-        if acted then 
-            task.wait(0.5)
-            continue 
-        end
-        -- Priority 2: Auto Steal
+        if acted then task.wait(0.5) continue end
         if autostealEnabled then
             local skipAutosteal = false
             if autoLockEnabled then
@@ -1333,21 +1225,13 @@ local function masterLoop()
                     local ownTimer = getTycoonTimer(ownTycoonInner)
                     if ownTimer <= 15 then
                         if not isPausingAutosteal then
-                            Rayfield:Notify({
-                                Title = "Autosteal Paused",
-                                Content = "Pausing autosteal 15 seconds in advance due to autolock enabled.",
-                                Duration = 5,
-                            })
+                            Rayfield:Notify({ Title = "Autosteal Paused", Content = "Pausing autosteal 15 seconds in advance due to autolock enabled.", Duration = 5 })
                             isPausingAutosteal = true
                         end
                         skipAutosteal = true
                     else
                         if isPausingAutosteal then
-                            Rayfield:Notify({
-                                Title = "Autosteal Resumed",
-                                Content = "Resuming autosteal as autolock not imminent.",
-                                Duration = 5,
-                            })
+                            Rayfield:Notify({ Title = "Autosteal Resumed", Content = "Resuming autosteal as autolock not imminent.", Duration = 5 })
                             isPausingAutosteal = false
                         end
                     end
@@ -1362,7 +1246,7 @@ local function masterLoop()
                         local tycoonInner = tycoonOuter:FindFirstChild("Tycoon")
                         if tycoonInner then
                             local timer = getTycoonTimer(tycoonInner)
-                            if timer == timerThreshold then
+                            if timer <= timerThreshold then
                                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                                 if hrp then
                                     local root = best:FindFirstChild("Root") or best:FindFirstChild("RootPart") or best:FindFirstChildWhichIsA("BasePart")
@@ -1370,13 +1254,13 @@ local function masterLoop()
                                         hrp.AssemblyLinearVelocity = Vector3.zero
                                         hrp.CFrame = root.CFrame * CFrame.new(0, 3, 0)
                                         task.wait()
-
                                         local ownerName = best:GetAttribute("Trash_Owner")
                                         if ownerName and ownerName ~= player.Name then
                                             local ownerPlayer = Players:FindFirstChild(ownerName)
                                             if ownerPlayer then
                                                 local trashID = best:GetAttribute("Trash_ID")
                                                 if trashID then
+                                                    scriptInitiatedSteal = true
                                                     stealRemote:FireServer(ownerPlayer, trashID)
                                                 end
                                             end
@@ -1390,11 +1274,7 @@ local function masterLoop()
                 end
             end
         end
-        if acted then 
-            task.wait()
-            continue 
-        end
-        -- Priority 3: 2x Fish Spawn
+        if acted then task.wait() continue end
         if buyFishSpawnEnabled then
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1408,11 +1288,7 @@ local function masterLoop()
                 end
             end
         end
-        if acted then 
-            task.wait(0.5)
-            continue 
-        end
-        -- Priority 4: 2x Conveyor Speed
+        if acted then task.wait(0.5) continue end
         if buyConveyorSpeedEnabled then
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1426,11 +1302,7 @@ local function masterLoop()
                 end
             end
         end
-        if acted then 
-            task.wait(0.5)
-            continue 
-        end
-
+        if acted then task.wait(0.5) continue end
         if autobuyEnabled then
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1459,13 +1331,89 @@ local function masterLoop()
                 end
             end
         end
-
-        if acted then 
-            task.wait(0.5) 
-        else 
-            task.wait(0.1) 
-        end
+        if acted then task.wait(0.5) else task.wait(0.1) end
     end
 end
+
+RunService.Heartbeat:Connect(function()
+    for p, obj in pairs(playerEspObjects) do
+        if not p or not p.Parent or not playerEspEnabled then
+            if obj.highlight then obj.highlight:Destroy() end
+            if obj.gui then obj.gui:Destroy() end
+            playerEspObjects[p] = nil
+        end
+    end
+
+    if playerEspEnabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("Head") then
+                if not playerEspObjects[p] then
+                    local highlight = Instance.new("Highlight", p.Character)
+                    highlight.FillColor = Color3.new(1, 1, 1)
+                    highlight.OutlineColor = Color3.new(0, 0, 0)
+                    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    highlight.FillTransparency = 0.6
+                    highlight.OutlineTransparency = 0.2
+
+                    local gui = Instance.new("BillboardGui", p.Character.Head)
+                    gui.AlwaysOnTop = true
+                    gui.Size = UDim2.new(0, 200, 0, 40)
+                    gui.StudsOffset = Vector3.new(0, 2.5, 0)
+
+                    if p.DisplayName == p.Name then
+                        local nameLabel = Instance.new("TextLabel", gui)
+                        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                        nameLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                        nameLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                        nameLabel.BackgroundTransparency = 1
+                        nameLabel.Font = Enum.Font.GothamBlack
+                        nameLabel.TextSize = 18
+                        nameLabel.TextColor3 = Color3.new(1,1,1)
+                        nameLabel.Text = p.DisplayName
+                        local nameStroke = Instance.new("UIStroke", nameLabel)
+                        nameStroke.Thickness = 2
+                        nameStroke.Color = Color3.new(0,0,0)
+                    else
+                        local nameLabel = Instance.new("TextLabel", gui)
+                        nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+                        nameLabel.Position = UDim2.new(0.5, 0, 0.3, 0)
+                        nameLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                        nameLabel.BackgroundTransparency = 1
+                        nameLabel.Font = Enum.Font.GothamBlack
+                        nameLabel.TextSize = 18
+                        nameLabel.TextColor3 = Color3.new(1,1,1)
+                        nameLabel.Text = p.DisplayName
+                        local nameStroke = Instance.new("UIStroke", nameLabel)
+                        nameStroke.Thickness = 2
+                        nameStroke.Color = Color3.new(0,0,0)
+
+                        local userLabel = Instance.new("TextLabel", gui)
+                        userLabel.Size = UDim2.new(1, 0, 0.4, 0)
+                        userLabel.Position = UDim2.new(0.5, 0, 0.75, 0)
+                        userLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                        userLabel.BackgroundTransparency = 1
+                        userLabel.Font = Enum.Font.GothamBlack
+                        userLabel.TextSize = 14
+                        userLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+                        userLabel.Text = "@" .. p.Name
+                        local userStroke = Instance.new("UIStroke", userLabel)
+                        userStroke.Thickness = 1.5
+                        userStroke.Color = Color3.new(0,0,0)
+                    end
+
+                    playerEspObjects[p] = {highlight = highlight, gui = gui}
+                end
+            end
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if playerEspObjects[p] then
+        if playerEspObjects[p].highlight then playerEspObjects[p].highlight:Destroy() end
+        if playerEspObjects[p].gui then playerEspObjects[p].gui:Destroy() end
+        playerEspObjects[p] = nil
+    end
+end)
 
 task.spawn(masterLoop)
